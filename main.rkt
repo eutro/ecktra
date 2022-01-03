@@ -1,51 +1,68 @@
 #lang racket/base
 
-(require math
-         racket/sequence
-         "ringbuf.rkt"
-         "decode.rkt")
-
-(define (spectrograph samples samplec samples/frame)
-  (define-values (has-next? next-sample!) (sequence-generate samples))
-  (define ringbuf (make-ring-buffer samplec samplec 0.0))
-  (define arr (ring-buffer-array ringbuf))
-  (let loop ([i 0])
-    (cond
-      [(or (>= i samplec) (not (has-next?))) (void)]
-      [else
-       (ring-buffer-push! ringbuf (next-sample!))
-       (loop (add1 i))]))
-  (define (next-spectrum!)
-    (define fft (array-axis-fft arr 0))
-    (for ([_ (in-range samples/frame)])
-      #:break (not (has-next?))
-      (ring-buffer-push! ringbuf (next-sample!)))
-    fft)
-  (stop-after (in-producer next-spectrum!) (lambda (_) (not (has-next?)))))
-
 (module+ main
   (require racket/cmdline
+           racket/stream
+           "decode.rkt"
+           "transform.rkt"
            "visualize.rkt"
            "gui.rkt")
   (define rate (box 441000))
-  (define samplec (box 262144))
   (define sample/frame (box 441000/30))
   (define astream
     (command-line
      #:once-any
      [("-r" "--rate") sample-rate "Sample rate (default 441000)"
                       (set-box! rate (string->number sample-rate))]
-     [("-s" "--samples") sample-frame-rate
-                         "Samples in output, must be an integer power of 2 (default 262144)"
-                         (set-box! samplec (string->number sample-frame-rate))]
      [("-f" "--frame") samples-per-frame "How many samples to read per frame"
                        (set-box! sample/frame (string->number samples-per-frame))]
      #:args (filename)
      (ecktra-decode-audio-file (unbox rate) filename)))
-  (define ani ((visualize-graph/2d/t-y 100 100)
-               (in-cycle (in-audio-stream astream))))
-  (thread-wait (show-animation ani))
-  #;
-  (for ([spectrum (spectrograph (in-audio-stream astream) (unbox samplec) (unbox sample/frame))])
-    (displayln spectrum))
-  (ecktra-stream-close astream))
+  (define close-stream!
+    (let ()
+      (define closed (box #f))
+      (lambda ()
+        (when (box-cas! closed #f #t)
+          (ecktra-stream-close astream)))))
+  (define sample-stream (sequence->stream (in-audio-stream astream)))
+  (define decoder-thread
+    (thread
+     (lambda ()
+       ;; force the stream
+       ;; TODO buffer off-thread (or rather, off-place)
+       (for ([_ sample-stream]) (sleep))
+       (close-stream!))))
+  (define ani
+    ((compose1
+      (compose1
+       (visualize-resize 1024 400)
+       (visualize-graph/2d/t-x-y 400))
+      #;
+      (compose1
+       list
+       (visualize-graph/2d/x-y 400))
+      #;(transform-map (transform-decimate 2))
+      #;
+      (compose1
+       transform-magnitude
+       #;
+       (transform-map
+        (compose1
+         (transform-drop 10)
+         (transform-take 22000)))
+       transform-inverse-dft)
+      (transform-window (expt 2 16) 441000/30 hann-window)
+      #;transform-dft-single
+      )
+     (in-cycle sample-stream)
+     #;
+     (for/stream ([t (in-naturals)])
+       (+ (* 1 (sin (* 2 3.14 100 t)))
+          (* 2 (sin (* 2 3.14 250 t)))))))
+  (define ani-thread (show-animation ani))
+  (void
+   (thread
+    (lambda ()
+      (thread-wait ani-thread)
+      (kill-thread decoder-thread)
+      (close-stream!)))))

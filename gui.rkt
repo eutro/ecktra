@@ -5,7 +5,15 @@
          "seq.rkt")
 (provide show-animation)
 
-;; (: show-animation (-> (Sequenceof Frame) Void))
+(define (fps-event fps)
+  (define evt-box (box always-evt))
+  (define (maker) (unbox evt-box))
+  (define (wrap res)
+    (define t (current-inexact-milliseconds))
+    (set-box! evt-box (alarm-evt (+ t (/ 1000 fps))))
+    t)
+  (wrap-evt (guard-evt maker) wrap))
+
 (define (show-animation frames)
   (when (sempty? frames)
     (raise-argument-error 'show-animation
@@ -14,9 +22,10 @@
   (define pict-frame (show-pict (sfirst frames)))
   (thread
    (lambda ()
+     (define fps (fps-event 30))
      (for ([frame frames])
-       (send pict-frame set-pict frame)
-       (sleep 1/30)))))
+       (sync fps)
+       (send pict-frame set-pict frame)))))
 
 ;; show-pict from pict but with the crucial difference that we did not
 ;; forget to actually return the frame

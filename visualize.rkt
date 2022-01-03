@@ -7,14 +7,16 @@
          "seq.rkt")
 
 (provide visualize-graph/2d/x-y
-         visualize-graph/2d/t-y)
+         visualize-graph/2d/t-y
+         visualize-graph/2d/t-x-y
+         visualize-resize)
 
 (define ((visualize-graph/2d/x-y height) samples)
   (define width (sequence-length samples))
   (define path (new draw/dc-path%))
   (define points
     (for/list ([(yv x) (in-indexed samples)])
-      (cons x (/ (+ height (* yv (- height 2))) 2))))
+      (cons x (/ (- height (* yv (- height 2))) 2))))
   (send path move-to (caar points) (cdar points))
   (send path lines (cdr points) 0 0)
   (define (draw dc dx dy)
@@ -27,9 +29,14 @@
     (send dc set-pen pen))
   (pict/dc draw width height))
 
+(define ((visualize-graph/2d/t-x-y height) sample-frames)
+  (smap (visualize-graph/2d/x-y height) sample-frames))
+
 (define ((visualize-graph/2d/t-y width height [s/frame 1]) samples)
-  (smap (visualize-graph/2d/x-y height)
-        (scons (stake samples width) (spartition samples width s/frame))))
+  ((visualize-graph/2d/t-x-y height) (scons (stake samples width) (spartition samples width s/frame))))
+
+(define ((visualize-resize width height) frames)
+  (smap (lambda (p) (pict/scale-to-fit p width height #:mode 'distort)) frames))
 
 (module+ main
   (require "gui.rkt")
