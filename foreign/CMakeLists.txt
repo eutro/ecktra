@@ -15,4 +15,4 @@ target_link_options(ecktra PRIVATE -static-libgcc -static-libstdc++)
 target_link_libraries(ecktra PkgConfig::LIBAV)
 install(
   TARGETS ecktra
-  LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/../lib)
+  LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/out)
