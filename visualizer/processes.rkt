@@ -8,7 +8,7 @@
   (let ()
     (: id (-> Time Time))
     (define (id t) t)
-    (make-signal id 0 0 #f)))
+    (make-signal id pure-signal-meta)))
 
 (define default-sample-freq (make-parameter 441000))
 
@@ -24,20 +24,17 @@
     [(zero? len) (pure (f 0 (λ (_) (raise #f))))]
     [else
      (define old-prod (signal-produce signal))
-     (define sample-freq
-       (or (signal-sample-freq signal)
-           (default-sample-freq)))
-     (define frame-size (cast (ceiling (* sample-freq len)) Integer))
      (: new-prod (-> Time R))
      (define (new-prod t)
        (: at (-> Time T))
        (define (at i) (old-prod (+ t i)))
-       (f frame-size at))
+       (f len at))
+     (define sm (signal-metadata signal))
      (make-signal
       new-prod
-      (+ len (signal-latency signal))
-      (signal-backlog signal)
-      (signal-sample-freq signal))]))
+      (signal-meta
+       (+ len (signal-meta-latency sm))
+       (signal-meta-backlog sm)))]))
 
 (: sliding-window-vector (All (T) (-> Time (Signal T) (Signal (Vectorof T)))))
 (define (sliding-window-vector len signal)
@@ -63,11 +60,12 @@
      (define old-prod (signal-produce signal))
      (: new-prod (-> Time T))
      (define (new-prod t) (old-prod (+ t by)))
+     (define sm (signal-metadata signal))
      (make-signal
       new-prod
-      (+ by (signal-latency signal))
-      (+ by (signal-backlog signal))
-      (signal-sample-freq signal))]))
+      (signal-meta
+       (+ by (signal-meta-latency sm))
+       (+ by (signal-meta-backlog sm))))]))
 
 (: time-travel-backward (All (T) (-> Time (Signal T) (Signal T))))
 (define (time-travel-backward by signal)

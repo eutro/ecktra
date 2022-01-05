@@ -20,10 +20,8 @@
     #:literals (bind)
     (pattern (bind _ ...)))
   (define-syntax-class top-stmt
-    #:literals (: typed-void typed-define)
-    (pattern (: _ ...))
-    (pattern (typed-void _ ...))
-    (pattern (typed-define _ ...))))
+    #:literals (: typed-void typed-define typed-begin)
+    (pattern ((~or : typed-void typed-define typed-begin) _ ...))))
 
 (define-syntax (seq stx)
   (syntax-parse stx

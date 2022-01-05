@@ -3,13 +3,18 @@
 (require racket/string)
 (provide (all-defined-out))
 
-(define-type Time Real)
+(define-type Time Integer)
+
+(struct signal-meta
+  ([latency : Time]
+   [backlog : Time])
+  #:transparent)
+
+(define pure-signal-meta (signal-meta 0 0))
 
 (struct (T) signal
   ([produce : (-> Time T)]
-   [latency : Time]
-   [backlog : Time]
-   [sample-freq : (Option Integer)])
+   [metadata : signal-meta])
   #:type-name Signal
   #:constructor-name make-signal)
 
@@ -17,9 +22,7 @@
 (define (swap-produce f signal)
   (make-signal
    f
-   (signal-latency signal)
-   (signal-backlog signal)
-   (signal-sample-freq signal)))
+   (signal-metadata signal)))
 
 (: fmap (All (A B) (-> (-> A B) (Signal A) (Signal B))))
 (define (fmap f signal)
@@ -45,7 +48,7 @@
     (define ($ f) (f t))
     (map $ produces))
   (>> (sequence_ signals)
-      (make-signal produce 0 0 #f)))
+      (make-signal produce pure-signal-meta)))
 
 (: liftA (All (R A ...) (-> (-> A ... A R) (Signal A) ... A (Signal R))))
 (define (liftA f . signals)
@@ -84,18 +87,20 @@
 
 (: can-sequence? (-> (Signal Any) (Signal Any) (Option (List Symbol String Any Any))))
 (define (can-sequence? lhs rhs)
-  (or (and (< (signal-latency lhs)
-              (signal-latency rhs))
+  (define lhsm (signal-metadata lhs))
+  (define rhsm (signal-metadata rhs))
+  (or (and (< (signal-meta-latency lhsm)
+              (signal-meta-latency rhsm))
            (list 'latency
                  ">="
-                 (signal-latency lhs)
-                 (signal-latency rhs)))
-      (and (< (signal-backlog lhs)
-              (signal-backlog rhs))
+                 (signal-meta-latency lhsm)
+                 (signal-meta-latency rhsm)))
+      (and (< (signal-meta-backlog lhsm)
+              (signal-meta-backlog rhsm))
            (list 'backlog
                  ">="
-                 (signal-backlog lhs)
-                 (signal-backlog rhs)))))
+                 (signal-meta-backlog lhsm)
+                 (signal-meta-backlog rhsm)))))
 
 (: >>= (All (A B) (-> (Signal A) (-> A (Signal B)) (Signal B))))
 (define (>>= signal f)
@@ -104,18 +109,16 @@
 (: pure (All (A) (-> A (Signal A))))
 (define (pure x)
   (define (prod _) x)
-  (make-signal prod 0 0 #f))
+  (make-signal prod pure-signal-meta))
 
 (: >> (All (A B) (-> (Signal A) (Signal B) (Signal B))))
 (define (>> lhs rhs)
+  (define lhsm (signal-metadata lhs))
+  (define rhsm (signal-metadata rhs))
   (make-signal
    (signal-produce rhs)
-   (max (signal-latency lhs)
-        (signal-latency rhs))
-   (max (signal-backlog lhs)
-        (signal-backlog rhs))
-   (let ([lf (signal-sample-freq lhs)]
-         [rf (signal-sample-freq rhs)])
-     (if (and lf rf)
-         (max lf rf) ;; maybe resample?
-         (or lf rf)))))
+   (signal-meta
+    (max (signal-meta-latency lhsm)
+         (signal-meta-latency rhsm))
+    (max (signal-meta-backlog lhsm)
+         (signal-meta-backlog rhsm)))))

@@ -7,7 +7,7 @@
 #include <bitset>
 #include <limits>
 
-#include <complex>
+#include <cmath>
 #include "fft.cc"
 
 extern "C" {
@@ -115,17 +115,25 @@ int ecktra_decode_audio_file(int sample_rate, const char *url, AudioStream **out
   return 0;
 }
 
-int ecktra_fft_mag(double *vec, int len, int inverse) {
-  std::unique_ptr<std::complex<double>[]> ret(new std::complex<double>[len]);
-  std::copy(vec, vec + len, ret.get());
+int ecktra_fft(double *real, double *imag,
+               int len, int inverse,
+               double *arg, double *mag) {
   // popcount != 1 => not a power of 2
   std::bitset<std::numeric_limits<unsigned int>::digits> set(len);
   if (set.count() != 1) {
     return 1;
   }
-  fft::FFT(inverse ? -1 : 1, len, log2(len), ret.get());
-  for (auto *ptr = ret.get(); ptr != ret.get() + len; ++ptr) {
-    *vec++ = std::abs(*ptr);
+  std::unique_ptr<double[]> realAlloced, imagAlloced;
+  if (!real) real = (realAlloced = std::unique_ptr<double[]>(new double[len])).get();
+  if (!imag) imag = (imagAlloced = std::unique_ptr<double[]>(new double[len])).get();
+  fft::FFT(inverse ? -1 : 1, len, log2(len), real, imag);
+  if (arg || mag) {
+    for (int i = 0; i < len; ++i) {
+      double re = real[i];
+      double im = imag[i];
+      if (arg) arg[i] = std::atan2(re, im);
+      if (mag) mag[i] = std::hypot(re, im);
+    }
   }
   return 0;
 }
