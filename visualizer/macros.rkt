@@ -17,8 +17,8 @@
 
 (begin-for-syntax
   (define-syntax-class bind-stmt
-    #:literals (bind :)
-    (pattern (bind id:id : ty val:expr)))
+    #:literals (bind)
+    (pattern (bind _ ...)))
   (define-syntax-class top-stmt
     #:literals (: typed-void typed-define)
     (pattern (: _ ...))
@@ -30,8 +30,12 @@
     #:track-literals
     #:literals (typed-define)
     [(_ bind:bind-stmt tail ...+)
-     (syntax/loc #'bind.id
-       (>>= bind.val (typed-lambda ([bind.id : bind.ty]) (seq tail ...))))]
+     (syntax-parse #'bind
+       #:track-literals
+       #:literals (:)
+       [(_ id:id : ty val:expr)
+        (syntax/loc #'id
+          (>>= val (typed-lambda ([id : ty]) (seq tail ...))))])]
     [(_ stmt:top-stmt tail ...+)
      (syntax/loc stx
        (begin
