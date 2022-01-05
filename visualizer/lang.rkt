@@ -4,6 +4,7 @@
          ecktra/visualizer/ops
          ecktra/visualizer/processes
          ecktra/visualizer/signal
+         ecktra/visualizer/plot
          typed/racket/base
          (for-syntax racket/base syntax/parse))
 (provide (rename-out [module-begin #%module-begin])
@@ -11,7 +12,8 @@
          (all-from-out ecktra/visualizer/macros
                        ecktra/visualizer/ops
                        ecktra/visualizer/processes
-                       ecktra/visualizer/signal))
+                       ecktra/visualizer/signal
+                       ecktra/visualizer/plot))
 
 (module typed typed/racket/base
   (require ecktra/visualizer/signal)

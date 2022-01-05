@@ -1,10 +1,7 @@
 #lang scribble/manual
-@require[@for-label[ecktra
-                    racket/base]]
+@require[@for-label[racket/base]]
 
 @title{ecktra}
 @author{eutro}
 
-@defmodule[ecktra]
-
-Package Description Here
+Ecktra is cool.
