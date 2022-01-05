@@ -2,7 +2,7 @@
 
 (module+ main
   (require racket/cmdline
-           racket/stream
+           "seq.rkt"
            "decode.rkt"
            "transform.rkt"
            "visualize.rkt"
@@ -35,22 +35,17 @@
   (define ani
     ((compose1
       (compose1
-       (visualize-resize 1024 400)
-       (visualize-graph/2d/t-x-y 400))
-      #;
-      (compose1
-       list
-       (visualize-graph/2d/x-y 400))
+       (visualize-resize 800 400)
+       (visualize-graph/2d/t-x-y 200))
+      #;(visualize-graph/2d/t-y 1000 400 441000/300)
       #;(transform-map (transform-decimate 2))
-      #;
       (compose1
-       transform-magnitude
-       #;
        (transform-map
         (compose1
-         (transform-drop 10)
-         (transform-take 22000)))
-       transform-inverse-dft)
+         #;transform-ln
+         (transform-mul 1/10000)
+         (transform-take 400)))
+       transform-inverse-dft/magnitude)
       (transform-window (expt 2 16) 441000/30 hann-window)
       #;transform-dft-single
       )

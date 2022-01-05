@@ -8,7 +8,8 @@
          transform-map
          transform-drop
          transform-take
-         transform-decimate)
+         transform-decimate
+         transform-log-frames)
 
 (define (transform-sum samples)
   (for/sum ([x samples]) x))
@@ -34,6 +35,20 @@
 
 (define ((transform-take n) samples)
   (stake samples n))
+
+(define ((transform-log-frames base [start 1]) buckets)
+  ;; f(log n) = buckets[n] ; 0 <= n < l
+  ;; => f(k) = buckets[b^k] ; 0 <= (k = log n) < log l
+  ;; but we want to do some averaging
+  (define b-exps (siterate (lambda (x) (* x base)) start))
+  (let loop ([buckets (sequence->stream buckets)]
+             [b-exps b-exps])
+    (cond
+      [(sempty? buckets) empty-stream]
+      [else
+       (define size (floor (sfirst b-exps)))
+       (define bc (stake buckets size))
+       (stream-cons bc (loop (sdrop buckets size) (snext b-exps)))])))
 
 (define ((transform-decimate factor) samples)
   (let loop ([samples samples])

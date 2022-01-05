@@ -8,13 +8,16 @@
 (define (fps-event fps)
   (define evt-box (box always-evt))
   (define (maker) (unbox evt-box))
+  (define last-t (current-inexact-milliseconds))
   (define (wrap res)
     (define t (current-inexact-milliseconds))
     (set-box! evt-box (alarm-evt (+ t (/ 1000 fps))))
-    t)
+    (define ret-fps (/ 1000 (- t last-t)))
+    (set! last-t t)
+    ret-fps)
   (wrap-evt (guard-evt maker) wrap))
 
-(define (show-animation frames)
+(define (show-animation frames [fps-cap 30])
   (when (sempty? frames)
     (raise-argument-error 'show-animation
                           "non-empty seq"
@@ -22,10 +25,14 @@
   (define pict-frame (show-pict (sfirst frames)))
   (thread
    (lambda ()
-     (define fps (fps-event 30))
-     (for ([frame frames])
-       (sync fps)
-       (send pict-frame set-pict frame)))))
+     (define-values (has-next? next!) (sequence-generate frames))
+     (define fps (fps-event fps-cap))
+     (let loop ()
+       (define current-fps (sync fps))
+       (printf "fps: ~a\n" current-fps)
+       (when (has-next?)
+         (send pict-frame set-pict (next!))
+         (loop))))))
 
 ;; show-pict from pict but with the crucial difference that we did not
 ;; forget to actually return the frame

@@ -9,6 +9,7 @@
          transform-angle
          transform-real
          transform-imag
+         transform-ln
 
          transform-mul
          transform-add)
@@ -28,6 +29,7 @@
 (define/transform-numeric transform-angle angle)
 (define/transform-numeric transform-real real-part)
 (define/transform-numeric transform-imag imag-part)
+(define/transform-numeric transform-ln log)
 
 (define (transform-binary* op name)
   (define (app n) (transform-numeric* (lambda (x) (op x n)) name))

@@ -1,8 +1,14 @@
+#include <bit>
 #include <cerrno>
 #include <cstring>
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <bitset>
+#include <limits>
+
+#include <complex>
+#include "fft.cc"
 
 extern "C" {
 #include <libavutil/samplefmt.h>
@@ -109,6 +115,21 @@ int ecktra_decode_audio_file(int sample_rate, const char *url, AudioStream **out
   return 0;
 }
 
+int ecktra_fft_mag(double *vec, int len, int inverse) {
+  std::unique_ptr<std::complex<double>[]> ret(new std::complex<double>[len]);
+  std::copy(vec, vec + len, ret.get());
+  // popcount != 1 => not a power of 2
+  std::bitset<std::numeric_limits<unsigned int>::digits> set(len);
+  if (set.count() != 1) {
+    return 1;
+  }
+  fft::FFT(inverse ? -1 : 1, len, log2(len), ret.get());
+  for (auto *ptr = ret.get(); ptr != ret.get() + len; ++ptr) {
+    *vec++ = std::abs(*ptr);
+  }
+  return 0;
+}
+
 }
 
 int AudioStream::read(double **ret_buf, int *ret_bufsz) {
@@ -150,4 +171,3 @@ int AudioStream::read(double **ret_buf, int *ret_bufsz) {
   *ret_bufsz = frame->nb_samples;
   return 0;
 }
-

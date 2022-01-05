@@ -1,18 +1,12 @@
 #lang racket/base
 
-(require ffi/unsafe ffi/unsafe/define
-         ffi/unsafe/define/conventions
-         racket/runtime-path
+(require ffi/unsafe
+         "foreign.rkt"
          racket/generator)
 
 (provide _AudioStream
          AudioStream?
          in-audio-stream)
-
-(define-runtime-path lib-dir "lib")
-(define-ffi-definer define-ecktra (ffi-lib (build-path lib-dir "libecktra"))
-  #:make-c-id convention:hyphen->underscore
-  #:provide provide-protected)
 
 (define-cpointer-type _AudioStream)
 

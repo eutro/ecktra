@@ -1,9 +1,7 @@
 #lang racket/base
 
 (require racket/stream
-         racket/sequence
-         (rename-in racket/stream [stream-cons scons])
-         (rename-in racket/sequence [sequence-map smap]))
+         racket/sequence)
 
 (provide uncons
          sfirst
@@ -15,7 +13,8 @@
          smap
          vec
          scount
-         spartition)
+         spartition
+         siterate)
 
 (define (uncons ls)
   (cond
@@ -84,6 +83,25 @@
      (if (= n (scount p))
          (stream-cons p (spartition (sdrop seq step) n step))
          null)]))
+
+(define (siterate f x)
+  (stream-cons x (siterate f (f x))))
+
+(define (scons lhs rhs)
+  (cond
+    [(or (pair? rhs) (null? rhs)) (cons lhs rhs)]
+    [(stream? rhs) (stream-cons lhs rhs)]
+    [(sequence? rhs) (cons lhs (sequence->stream rhs))]
+    [else (raise-argument-error 'scons "sequence?" rhs)]))
+
+(define (smap f l . ls)
+  (if (null? ls)
+      (stream-map f (sequence->stream l))
+      (let loop ([ls (cons l ls)])
+        (if (andmap pair? ls)
+            (stream-cons (apply f (map sfirst ls))
+                         (loop (map snext ls)))
+            empty-stream))))
 
 (module+ test
   (require rackunit)
