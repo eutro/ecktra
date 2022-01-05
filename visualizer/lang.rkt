@@ -17,14 +17,15 @@
 
 (module typed typed/racket/base
   (require ecktra/visualizer/signal)
-  (provide current-samples samples)
-  (: current-samples (Parameterof (-> Time Time (Signal Flonum))))
+  (provide current-samples samples StartFn)
+  (define-type StartFn (-> Time Time (Signal Flonum)))
+  (: current-samples (Parameterof StartFn))
   (define current-samples (make-parameter (lambda _ (raise #f))))
-  (: samples (-> Time Time (Signal Flonum)))
+  (: samples StartFn)
   (define (samples backlog latency) ((current-samples) backlog latency)))
 
 (require 'typed)
-(provide samples)
+(provide samples StartFn)
 
 (define-syntax (module-begin stx)
   (define-syntax-class require-form
@@ -36,10 +37,9 @@
      (syntax/loc stx
        (#%module-begin
         requires ...
-        (: main (-> (-> Time Time (Signal Flonum)) (Signal Any)))
-        (define (main samples)
-          (parameterize ([current-samples samples])
-            (seq body ...)))
+        (: main (-> (Signal Any)))
+        (define (main)
+          (seq body ...))
         (module+ main
-          (require ecktra/visualizer/input)
-          (process-input main))))]))
+          (require ecktra/visualizer/main)
+          (start-with main))))]))

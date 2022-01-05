@@ -2,11 +2,12 @@
 
 (require ffi/unsafe
          "foreign.rkt"
-         racket/generator)
+         ffi/unsafe/custodian)
 
 (provide _AudioStream
          AudioStream?
-         in-audio-stream)
+         stream-closed?
+         stream-close!)
 
 (define-cpointer-type _AudioStream)
 
@@ -20,12 +21,24 @@
    _path ; url
    [ret : (_ptr o _AudioStream)]
    -> [err : _int]
-   -> (if (< err 0)
-          (raise-errno err)
-          ret)))
+   -> (cond
+        [(< err 0)
+         (raise-errno err)]
+        [else
+         (register-custodian-shutdown ret stream-close! #:at-exit? #t)
+         ret])))
 
 (define-ecktra ecktra-stream-close
   (_fun _AudioStream -> _void))
+
+(define (stream-closed? ptr)
+  (cpointer-has-tag? ptr 'closed))
+
+(define (stream-close! ptr)
+  (unless (stream-closed? ptr)
+    (ecktra-stream-close ptr)
+    (cpointer-push-tag! ptr 'closed))
+  (void))
 
 (define-ecktra ecktra-eof _int)
 
@@ -37,30 +50,4 @@
         -> (cond
              [(= err ecktra-eof) eof]
              [(< err 0) (raise-errno err)]
-             [else (cblock->vector buf _double bufsz)])))
-
-(define (sequence-append* seqs)
-  (in-generator
-   (for ([seq seqs])
-     (for ([el seq])
-       (yield el)))))
-
-(define (in-audio-stream astream)
-  (sequence-append* (in-producer ecktra-stream-read eof astream)))
-
-(module+ main
-  (require racket/cmdline)
-  (define astream
-    (let ()
-      (define rate (box 441000))
-      (command-line
-       #:once-any
-       [("-r" "--rate") sample-rate "Sample rate (default 441000)"
-                        (set-box! rate (string->number sample-rate))]
-       #:args (filename)
-       (ecktra-decode-audio-file (unbox rate) filename))))
-  (for ([sample (in-audio-stream astream)])
-    (displayln sample))
-  (ecktra-stream-close astream)
-  ;
-  )
+             [else (cons buf bufsz)])))
