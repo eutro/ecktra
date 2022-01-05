@@ -1,5 +1,6 @@
 #lang typed/racket/base
 
+(require racket/string)
 (provide (all-defined-out))
 
 (define-type Time Real)
@@ -60,9 +61,41 @@
   (define old-prod (signal-produce signal))
   (: new-prod (-> Time A))
   (define (new-prod t)
-    (define prod (signal-produce (old-prod t)))
+    (define new-sig (old-prod t))
+    (cond
+      [(can-sequence? signal new-sig)
+       =>
+       (lambda (prop)                               
+         (raise
+          (exn:fail:contract
+           (string-join
+            (list "join: could not sequence signals;"
+                  (format "outer signal's ~a is incompatible with the signal it produces:" (car prop))
+                  (format "outer signal ~a: ~a" (car prop) (caddr prop))
+                  (format "inner signal ~a: ~a" (car prop) (cadddr prop))
+                  (format "expected relationship: outer ~a inner" (cadr prop))
+                  (format "hint: increase the specified ~a of the outer signal" (car prop)))
+            "\n  ")
+           (current-continuation-marks))))]
+      [else (void)])
+    (define prod (signal-produce new-sig))
     (prod t))
-  (>> signal (swap-produce new-prod signal)))
+  (swap-produce new-prod signal))
+
+(: can-sequence? (-> (Signal Any) (Signal Any) (Option (List Symbol String Any Any))))
+(define (can-sequence? lhs rhs)
+  (or (and (< (signal-latency lhs)
+              (signal-latency rhs))
+           (list 'latency
+                 ">="
+                 (signal-latency lhs)
+                 (signal-latency rhs)))
+      (and (< (signal-backlog lhs)
+              (signal-backlog rhs))
+           (list 'backlog
+                 ">="
+                 (signal-backlog lhs)
+                 (signal-backlog rhs)))))
 
 (: >>= (All (A B) (-> (Signal A) (-> A (Signal B)) (Signal B))))
 (define (>>= signal f)

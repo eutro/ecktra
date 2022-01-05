@@ -1,6 +1,7 @@
 #lang typed/racket/base
 
 (require "signal.rkt" racket/flonum)
+(provide (all-defined-out))
 
 (: current-time (Signal Time))
 (define current-time
