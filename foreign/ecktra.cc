@@ -1,4 +1,3 @@
-#include <bit>
 #include <cerrno>
 #include <cstring>
 #include <cstdint>

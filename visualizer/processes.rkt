@@ -10,8 +10,6 @@
     (define (id t) t)
     (make-signal id pure-signal-meta)))
 
-(define default-sample-freq (make-parameter 441000))
-
 (: sliding-window-by
    (All (T R)
         (-> (-> Integer (-> Integer T) R)
@@ -29,12 +27,7 @@
        (: at (-> Time T))
        (define (at i) (old-prod (+ t i)))
        (f len at))
-     (define sm (signal-metadata signal))
-     (make-signal
-      new-prod
-      (signal-meta
-       (+ len (signal-meta-latency sm))
-       (signal-meta-backlog sm)))]))
+     (swap-produce new-prod signal)]))
 
 (: sliding-window-vector (All (T) (-> Time (Signal T) (Signal (Vectorof T)))))
 (define (sliding-window-vector len signal)
@@ -60,12 +53,7 @@
      (define old-prod (signal-produce signal))
      (: new-prod (-> Time T))
      (define (new-prod t) (old-prod (+ t by)))
-     (define sm (signal-metadata signal))
-     (make-signal
-      new-prod
-      (signal-meta
-       (+ by (signal-meta-latency sm))
-       (+ by (signal-meta-backlog sm))))]))
+     (swap-produce new-prod signal)]))
 
 (: time-travel-backward (All (T) (-> Time (Signal T) (Signal T))))
 (define (time-travel-backward by signal)

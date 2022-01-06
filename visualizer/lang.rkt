@@ -5,6 +5,7 @@
          ecktra/visualizer/processes
          ecktra/visualizer/signal
          ecktra/visualizer/plot
+         ecktra/visualizer/main
          typed/racket/base
          (for-syntax racket/base syntax/parse))
 (provide (rename-out [module-begin #%module-begin])
@@ -17,29 +18,41 @@
 
 (module typed typed/racket/base
   (require ecktra/visualizer/signal)
-  (provide current-samples samples StartFn)
-  (define-type StartFn (-> Time Time (Signal Flonum)))
-  (: current-samples (Parameterof StartFn))
-  (define current-samples (make-parameter (lambda _ (raise #f))))
-  (: samples StartFn)
-  (define (samples backlog latency) ((current-samples) backlog latency)))
+  (provide current-samples samples)
+
+  (: current-samples (Parameterof (Signal Flonum)))
+  (define current-samples (make-parameter (pure 0.0)))
+  (: samples (-> (Signal Flonum)))
+  (define (samples) (current-samples)))
 
 (require 'typed)
-(provide samples StartFn)
+(provide samples)
 
 (define-syntax (module-begin stx)
   (define-syntax-class require-form
     #:literals (require #%require)
     (pattern (require _ ...))
     (pattern (#%require _ ...)))
+  (define-splicing-syntax-class option
+    #:attributes (opt val)
+    (pattern {~seq #:latency val:expr} #:attr opt #'current-latency)
+    (pattern {~seq #:backbuf val:expr} #:attr opt #'current-backbuf)
+    (pattern {~seq #:sample-rate val:expr} #:attr opt #'current-sample-rate))
   (syntax-parse stx
-    [(_ requires:require-form ... body ...+)
-     (syntax/loc stx
-       (#%module-begin
-        requires ...
-        (: main (-> (Signal Any)))
-        (define (main)
-          (seq body ...))
-        (module+ main
-          (require ecktra/visualizer/main)
-          (start-with main))))]))
+    [(_ requires:require-form ...
+        option:option ...
+        body ...+)
+     (with-syntax ([main-def
+                    (syntax/loc stx
+                      (define (main)
+                        (seq body ...)))])
+       (syntax/loc stx
+         (#%module-begin
+          requires ...
+          (: main (-> (Signal Any)))
+          main-def
+          (module+ main
+            (require ecktra/visualizer/main)
+            (parameterize ([option.opt option.val]
+                           ...)
+              (start-with main current-samples))))))]))

@@ -1,4 +1,4 @@
+#!/usr/bin/env racket
 #lang ecktra/visualizer
 
-(samples 0 0)
-
+(samples)

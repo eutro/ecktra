@@ -6,11 +6,17 @@
 (define-type Time Integer)
 
 (struct signal-meta
-  ([latency : Time]
-   [backlog : Time])
+  ([unused : Void])
   #:transparent)
 
-(define pure-signal-meta (signal-meta 0 0))
+(: pure-signal-meta signal-meta)
+(define pure-signal-meta (signal-meta (void)))
+(: current-sample-rate (Parameterof Integer))
+(define current-sample-rate (make-parameter 441000))
+(: current-latency (Parameterof Time))
+(define current-latency (make-parameter 1))
+(: current-backbuf (Parameterof Time))
+(define current-backbuf (make-parameter 0))
 
 (struct (T) signal
   ([produce : (-> Time T)]
@@ -34,10 +40,7 @@
 
 (: sequence_ (All (A ...) (-> (List (Signal A) ... A) (Signal Void))))
 (define (sequence_ signals)
-  (if (null? signals)
-      (pure (void))
-      (>> (car signals)
-          (sequence_ (cdr signals)))))
+  (pure (void)))
 
 (: sequence (All (A ...) (-> (List (Signal A) ... A) (Signal (List A ... A)))))
 (define (sequence signals)
@@ -47,8 +50,7 @@
     (: $ (All (T) (-> (-> Time T) T)))
     (define ($ f) (f t))
     (map $ produces))
-  (>> (sequence_ signals)
-      (make-signal produce pure-signal-meta)))
+  (make-signal produce pure-signal-meta))
 
 (: liftA (All (R A ...) (-> (-> A ... A R) (Signal A) ... A (Signal R))))
 (define (liftA f . signals)
@@ -65,42 +67,9 @@
   (: new-prod (-> Time A))
   (define (new-prod t)
     (define new-sig (old-prod t))
-    (cond
-      [(can-sequence? signal new-sig)
-       =>
-       (lambda (prop)                               
-         (raise
-          (exn:fail:contract
-           (string-join
-            (list "join: could not sequence signals;"
-                  (format "outer signal's ~a is incompatible with the signal it produces:" (car prop))
-                  (format "outer signal ~a: ~a" (car prop) (caddr prop))
-                  (format "inner signal ~a: ~a" (car prop) (cadddr prop))
-                  (format "expected relationship: outer ~a inner" (cadr prop))
-                  (format "hint: increase the specified ~a of the outer signal" (car prop)))
-            "\n  ")
-           (current-continuation-marks))))]
-      [else (void)])
     (define prod (signal-produce new-sig))
     (prod t))
   (swap-produce new-prod signal))
-
-(: can-sequence? (-> (Signal Any) (Signal Any) (Option (List Symbol String Any Any))))
-(define (can-sequence? lhs rhs)
-  (define lhsm (signal-metadata lhs))
-  (define rhsm (signal-metadata rhs))
-  (or (and (< (signal-meta-latency lhsm)
-              (signal-meta-latency rhsm))
-           (list 'latency
-                 ">="
-                 (signal-meta-latency lhsm)
-                 (signal-meta-latency rhsm)))
-      (and (< (signal-meta-backlog lhsm)
-              (signal-meta-backlog rhsm))
-           (list 'backlog
-                 ">="
-                 (signal-meta-backlog lhsm)
-                 (signal-meta-backlog rhsm)))))
 
 (: >>= (All (A B) (-> (Signal A) (-> A (Signal B)) (Signal B))))
 (define (>>= signal f)
@@ -113,12 +82,4 @@
 
 (: >> (All (A B) (-> (Signal A) (Signal B) (Signal B))))
 (define (>> lhs rhs)
-  (define lhsm (signal-metadata lhs))
-  (define rhsm (signal-metadata rhs))
-  (make-signal
-   (signal-produce rhs)
-   (signal-meta
-    (max (signal-meta-latency lhsm)
-         (signal-meta-latency rhsm))
-    (max (signal-meta-backlog lhsm)
-         (signal-meta-backlog rhsm)))))
+  rhs)

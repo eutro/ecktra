@@ -47,7 +47,7 @@
        (vector-set! buf j (f (+ pre-end j))))
      (set-ring-buffer-offset! ringbuf post-end)]))
 
-(: ring-buffer-nth (All (T) (-> (RingBuffer T) Index T)))
+(: ring-buffer-nth (All (T) (-> (RingBuffer T) Integer T)))
 (define (ring-buffer-nth ringbuf i)
   (define buf (ring-buffer-buf ringbuf))
   (define size (vector-length buf))

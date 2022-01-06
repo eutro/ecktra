@@ -3,51 +3,46 @@
 (require racket/cmdline
          "../foreign/decode.rkt"
          "ringbuf.rkt"
+         "signal.rkt"
          ffi/unsafe)
 (provide start-buffering)
 
 (define (parse-cl)
-  (define rate (box 441000))
   (define astream
     (command-line
      #:once-any
-     [("-r" "--rate") sample-rate "Sample rate (default 441000)"
-                      (set-box! rate (string->number sample-rate))]
+     [("-r" "--rate")
+      sample-rate
+      "Set sample rate (default 441000)"
+      (current-sample-rate (string->number sample-rate))]
      #:args (filename)
-     (ecktra-decode-audio-file (unbox rate) filename)))
+     (ecktra-decode-audio-file (current-sample-rate) filename)))
   astream)
 
 (define (start-buffering buf)
   (define astream (parse-cl))
   (define left #f)
   (define (read-next!) (ecktra-stream-read astream))
-  (define (read-next skip n)
-    (define (loop1 skip nxt)
+  (define (read-next n)
+    (define (loop n nxt)
       (cond
-        [(> skip (car nxt)) (loop1 (- skip (car nxt)) (read-next!))]
-        [(< skip (car nxt))
-         (ptr-add! (cdr nxt) skip)
-         (cons (- (car nxt) skip) (cdr nxt))]
-        [else (read-next!)]))
-    (define (loop2 n nxt)
-      (define (ref-nxt i) (ptr-ref (cdr nxt) i))
-      (cond
-        [(> n (car nxt))
-         (ring-buffer-push-all! buf nxt ref-nxt)
-         (loop2 (- n (car nxt)) (read-next!))]
-        [(< n (car nxt))
-         (ring-buffer-push-all! buf n ref-nxt)
-         (define remaining-nxt (- (car nxt) n))
-         (ptr-add! (cdr nxt) n)
-         (set! left (cons remaining-nxt (cdr nxt)))
-         (void)]
+        [(eof-object? nxt) n]
         [else
-         (ring-buffer-push-all! buf n ref-nxt)
-         (void)]))
-    (define packet (or left (read-next!)))
-    (loop2
-     n
-     (if (zero? skip)
-         packet
-         (loop1 skip packet))))
+         (define nbuf (car nxt))
+         (define nsz (cdr nxt))
+         (define (ref-nxt i) (ptr-ref nbuf _double i))
+         (cond
+           [(> n nsz)
+            (ring-buffer-push-all! buf nsz ref-nxt)
+            (loop (- n nsz) (read-next!))]
+           [(< n nsz)
+            (ring-buffer-push-all! buf n ref-nxt)
+            (define remaining-nxt (- nsz n))
+            (set! left (cons (ptr-add nbuf n) nsz))
+            0]
+           [else
+            (ring-buffer-push-all! buf n ref-nxt)
+            (set! left #f)
+            0])]))
+    (loop n (or left (read-next!))))
   read-next)

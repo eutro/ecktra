@@ -27,14 +27,26 @@
   (syntax-parse stx
     #:track-literals
     #:literals (typed-define)
-    [(_ bind:bind-stmt tail ...+)
+    [(_ bind:bind-stmt tail ...)
      (syntax-parse #'bind
        #:track-literals
        #:literals (:)
        [(_ id:id : ty val:expr)
-        (syntax/loc #'id
-          (>>= val (typed-lambda ([id : ty]) (seq tail ...))))])]
-    [(_ stmt:top-stmt tail ...+)
+        (with-syntax
+          ([tail-seq
+            (let ([tail-exprs (syntax-e #'(tail ...))])
+              (syntax/loc (if (pair? tail-exprs)
+                              (car tail-exprs)
+                              #'bind) 
+                (seq tail ...)))]
+           [bind-def
+            (syntax/loc #'bind
+              (typed-define sig : (Signal ty) val))])
+          (syntax/loc #'tail-seq
+            (begin
+              bind-def
+              (>>= sig (typed-lambda ([id : ty]) tail-seq)))))])]
+    [(_ stmt:top-stmt tail ...)
      (syntax/loc stx
        (begin
          stmt
