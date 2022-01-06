@@ -2,7 +2,7 @@
 
 (require racket/cmdline
          "../foreign/decode.rkt"
-         "ringbuf.rkt"
+         "../util/ringbuf.rkt"
          "signal.rkt"
          ffi/unsafe)
 (provide start-buffering)

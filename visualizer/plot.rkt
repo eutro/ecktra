@@ -25,3 +25,11 @@
     (send dc set-brush brush)
     (send dc set-pen pen))
   (pict/dc draw width height))
+
+(module* typed typed/racket/base
+  (require typed/pict)
+  (require/typed (submod "..")
+    [plot-2d-x-y (-> Integer Integer
+                     (U FlVector (Sequenceof Real))
+                     pict)])
+  (provide plot-2d-x-y))

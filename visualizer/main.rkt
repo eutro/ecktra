@@ -1,12 +1,15 @@
 #lang typed/racket/base
 
 (require "signal.rkt"
-         "ringbuf.rkt")
+         "../util/ringbuf.rkt"
+         (submod "../util/fps.rkt" typed)
+         typed/racket/unsafe)
 (require/typed "buffer.rkt"
   [start-buffering (-> (RingBuffer Flonum) (-> Integer Integer))])
-(require/typed "gui.rkt"
-  [init-gui (-> Void)]
-  [put-frame! (-> Any Void)])
+(unsafe-require/typed ;; safety: the procedures would throw on violation anyway
+ "gui.rkt"
+ [init-gui (-> Void)]
+ [put-frame! (-> Any Void)])
 
 (provide start-with)
 
@@ -38,11 +41,21 @@
     (define produce (signal-produce out))
 
     (read-samples! latency)
-    (define dt 441000/30)
+    (define max-fps 30)
+    (define fps (fps-event max-fps))
     (init-gui)
-    (let loop ([t 0])
-      (set! t0 (- t time-offset))
-      (define frame (produce t))
-      (put-frame! frame)
-      (when (zero? (read-samples! dt))
-        (loop (+ t dt))))))
+    (thread
+     (lambda ()
+       (let loop ([t 0])
+         (set! t0 (- t time-offset))
+         (define frame (produce t))
+         (define dt-ms (sync fps))
+         (displayln (/ 1000 dt-ms))
+         (put-frame! frame)
+         (define dt
+           (floor
+            (* (/ max-fps)
+               (current-sample-rate))))
+         (when (zero? (read-samples! dt))
+           (loop (+ t dt))))))
+    (void)))

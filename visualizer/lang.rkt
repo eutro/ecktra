@@ -1,12 +1,13 @@
 #lang racket/base
 
-(require ecktra/visualizer/macros
-         ecktra/visualizer/ops
-         ecktra/visualizer/processes
-         ecktra/visualizer/signal
-         ecktra/visualizer/plot
-         ecktra/visualizer/main
+(require ecktra/visualizer/macros ;; macros
+         ecktra/visualizer/ops ;; typed
+         ecktra/visualizer/processes ;; typed
+         ecktra/visualizer/signal ;; typed
+         ecktra/visualizer/main ;; typed
+         (submod ecktra/visualizer/plot typed) ;; typed
          typed/racket/base
+         (prefix-in pict/ typed/pict)
          (for-syntax racket/base syntax/parse))
 (provide (rename-out [module-begin #%module-begin])
          (except-out (all-from-out typed/racket/base) #%module-begin)
@@ -14,7 +15,7 @@
                        ecktra/visualizer/ops
                        ecktra/visualizer/processes
                        ecktra/visualizer/signal
-                       ecktra/visualizer/plot))
+                       (submod ecktra/visualizer/plot typed)))
 
 (module typed typed/racket/base
   (require ecktra/visualizer/signal)
