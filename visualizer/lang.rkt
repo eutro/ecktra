@@ -30,17 +30,16 @@
 (provide samples)
 
 (define-syntax (module-begin stx)
-  (define-syntax-class require-form
-    #:literals (require #%require)
-    (pattern (require _ ...))
-    (pattern (#%require _ ...)))
+  (define-syntax-class pre-form
+    #:literals (require #%require define define-values void)
+    (pattern ({~or require #%require define define-values void} _ ...)))
   (define-splicing-syntax-class option
     #:attributes (opt val)
     (pattern {~seq #:latency val:expr} #:attr opt #'current-latency)
     (pattern {~seq #:backbuf val:expr} #:attr opt #'current-backbuf)
     (pattern {~seq #:sample-rate val:expr} #:attr opt #'current-sample-rate))
   (syntax-parse stx
-    [(_ requires:require-form ...
+    [(_ pres:pre-form ...
         option:option ...
         body ...+)
      (with-syntax ([main-def
@@ -49,7 +48,7 @@
                         (seq body ...)))])
        (syntax/loc stx
          (#%module-begin
-          requires ...
+          pres ...
           (: main (-> (Signal Any)))
           main-def
           (module+ main

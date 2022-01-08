@@ -4,7 +4,8 @@
          "../foreign/decode.rkt"
          "../util/ringbuf.rkt"
          "signal.rkt"
-         ffi/unsafe)
+         ffi/unsafe
+         racket/flonum)
 (provide start-buffering)
 
 (define (parse-cl)
@@ -21,28 +22,16 @@
 
 (define (start-buffering buf)
   (define astream (parse-cl))
-  (define left #f)
-  (define (read-next!) (ecktra-stream-read astream))
+  (define bastream (ecktra-start-buffering astream))
+  (define rate (current-sample-rate))
+  (stream-close! astream)
+
   (define (read-next n)
-    (define (loop n nxt)
-      (cond
-        [(eof-object? nxt) n]
-        [else
-         (define nbuf (car nxt))
-         (define nsz (cdr nxt))
-         (define (ref-nxt i) (ptr-ref nbuf _double i))
-         (cond
-           [(> n nsz)
-            (ring-buffer-push-all! buf nsz ref-nxt)
-            (loop (- n nsz) (read-next!))]
-           [(< n nsz)
-            (ring-buffer-push-all! buf n ref-nxt)
-            (define remaining-nxt (- nsz n))
-            (set! left (cons (ptr-add nbuf n) nsz))
-            0]
-           [else
-            (ring-buffer-push-all! buf n ref-nxt)
-            (set! left #f)
-            0])]))
-    (loop n (or left (read-next!))))
+    (define cbuf (ecktra-buffered-stream-current-buffered bastream))
+    (when (< cbuf n) (ecktra-buffered-stream-ensure-buffered bastream (* rate 5)))
+    (define flv (make-flvector n))
+    (define unread (ecktra-buffered-stream-read bastream (flvector->cpointer flv) n))
+    (define (ref i) (flvector-ref flv i))
+    (ring-buffer-push-all! buf n ref)
+    unread)
   read-next)

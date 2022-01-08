@@ -7,9 +7,11 @@
 (provide _AudioStream
          AudioStream?
          stream-closed?
-         stream-close!)
+         stream-close!
+         buffered-stream-close!)
 
 (define-cpointer-type _AudioStream)
+(define-cpointer-type _BufferedAudioStream)
 
 (define (raise-errno err)
   (raise (exn:fail (format "error\n  errno: ~a" err)
@@ -31,12 +33,29 @@
 (define-ecktra ecktra-stream-close
   (_fun _AudioStream -> _void))
 
+(define-ecktra ecktra-start-buffering
+  (_fun
+   _AudioStream
+   -> [ret :  _BufferedAudioStream]
+   -> (begin
+        (register-custodian-shutdown ret buffered-stream-close! #:at-exit? #t)
+        ret)))
+
+(define-ecktra ecktra-buffered-stream-close
+  (_fun _BufferedAudioStream -> _void))
+
 (define (stream-closed? ptr)
   (cpointer-has-tag? ptr 'closed))
 
 (define (stream-close! ptr)
   (unless (stream-closed? ptr)
     (ecktra-stream-close ptr)
+    (cpointer-push-tag! ptr 'closed))
+  (void))
+
+(define (buffered-stream-close! ptr)
+  (unless (stream-closed? ptr)
+    (ecktra-buffered-stream-close ptr)
     (cpointer-push-tag! ptr 'closed))
   (void))
 
@@ -51,3 +70,26 @@
              [(= err ecktra-eof) eof]
              [(< err 0) (raise-errno err)]
              [else (cons buf bufsz)])))
+
+(define-ecktra ecktra-buffered-stream-read
+  (_fun [as : _BufferedAudioStream]
+        [buf : _pointer]
+        [bufsz : (_ptr io _int)]
+        -> [err : _int]
+        -> (cond
+             [(= err ecktra-eof) bufsz]
+             [(< err 0) (raise-errno err)]
+             [else 0])))
+
+(define-ecktra ecktra-buffered-stream-current-buffered
+  (_fun _BufferedAudioStream
+        -> _int))
+
+(define-ecktra ecktra-buffered-stream-ensure-buffered
+  (_fun _BufferedAudioStream
+        [n : (_ptr io _int)]
+        -> [err : _int]
+        -> (cond
+             [(= err ecktra-eof) n]
+             [(< err 0) (raise-errno err)]
+             [else 0])))

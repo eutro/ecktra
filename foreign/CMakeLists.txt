@@ -10,7 +10,7 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
   libavformat
 )
 
-add_library(ecktra SHARED ecktra.cc)
+add_library(ecktra SHARED Interface.cc)
 target_link_options(ecktra PRIVATE -static-libgcc -static-libstdc++)
 target_link_libraries(ecktra PkgConfig::LIBAV)
 install(

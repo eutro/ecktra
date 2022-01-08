@@ -16,15 +16,19 @@
             (/ (- height (* yv (- height 2))) 2))))
   (send path move-to (caar points) (cdar points))
   (send path lines (cdr points) 0 0)
+  (define pen
+    (send draw/the-pen-list
+          find-or-create-pen
+          "black" 1 'solid))
+  (define brush
+    (send draw/the-brush-list
+          find-or-create-brush
+          "white" 'transparent))
   (define (draw dc dx dy)
-    (define pen (send dc get-pen))
-    (send dc set-pen "black" 1 'solid)
-    (define brush (send dc get-brush))
-    (send dc set-brush "white" 'transparent)
-    (send dc draw-path path dx dy)
+    (send dc set-pen pen)
     (send dc set-brush brush)
-    (send dc set-pen pen))
-  (pict/dc draw width height))
+    (send dc draw-path path dx dy))
+  (pict/unsafe-dc draw width height))
 
 (module* typed typed/racket/base
   (require typed/pict)

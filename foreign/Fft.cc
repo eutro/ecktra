@@ -1,4 +1,3 @@
-// source: http://paulbourke.net/miscellaneous/dft/fft_ms.c
 // see: http://paulbourke.net/miscellaneous/dft/
 namespace fft {
 using std::sqrt;
@@ -64,7 +63,8 @@ static void FFT(int dir,long nn,int m,double *x,double *y)
    }
 
    /* Scaling for forward transform */
-   if (dir == 1) {
+   // edit: ...but it's the reverse transform that's supposed to be scaled?
+   if (dir == -1) {
       for (i=0;i<nn;i++) {
          x[i] /= (double)nn;
          y[i] /= (double)nn;

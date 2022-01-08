@@ -50,7 +50,7 @@
          (set! t0 (- t time-offset))
          (define frame (produce t))
          (define dt-ms (sync fps))
-         (displayln (/ 1000 dt-ms))
+         (printf "FPS: ~a\n" (/ 1000 dt-ms))
          (put-frame! frame)
          (define dt
            (floor

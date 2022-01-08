@@ -16,7 +16,7 @@
           [(zero? ret) (void)]
           [else (raise-argument-error 'ecktra-fft-mag "power-of-two?" len)])))
 
-(define (fft! real inverse [imag #f] [mag #f] [arg #f])
+(define (fft! inverse real [imag #f] [mag #f] [arg #f])
   (unless (flvector? real)
     (raise-argument-error 'fft! "flvector?" real))
   (define len (flvector-length real))
