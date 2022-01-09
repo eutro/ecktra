@@ -2,14 +2,13 @@
 
 (require "signal.rkt"
          "../util/ringbuf.rkt"
-         (submod "../util/fps.rkt" typed)
          typed/racket/unsafe)
-(require/typed "buffer.rkt"
-  [start-buffering (-> (RingBuffer Flonum) (-> Integer Integer))])
-(unsafe-require/typed ;; safety: the procedures would throw on violation anyway
- "gui.rkt"
- [init-gui (-> Void)]
- [put-frame! (-> Any Void)])
+(unsafe-require/typed "cl.rkt"
+  [parse-cl (-> (Values (-> (RingBuffer Flonum) Integer Integer)
+                        (-> Any Void)
+                        (-> Void)
+                        (Evtof Real)
+                        (-> Thread Void)))])
 
 (provide start-with)
 
@@ -18,12 +17,14 @@
        (Parameterof (Signal Flonum))
        Void))
 (define (start-with f current-start)
+  (define-values (read-next! put-frame! finish fps consume-thread) (parse-cl))
+
   (define time-offset (current-backbuf))
   (define latency (current-latency))
   (define bufsz (max 1 (+ time-offset latency)))
 
   (define buf (make-ring-buffer bufsz 0.0))
-  (define read-samples! (start-buffering buf))
+  (define (read-samples! [n : Time]) (read-next! buf n))
 
   (define t0 0)
   (: get-sample (-> Time Flonum))
@@ -39,25 +40,23 @@
   (parameterize ([current-start samples])
     (define out (f))
     (define produce (signal-produce out))
-
+    
     (read-samples! latency)
-    (define max-fps 30)
-    (define fps (fps-event max-fps))
-    (init-gui)
-    (thread
-     (lambda ()
-       (let loop ([t 0])
-         (set! t0 (- t time-offset))
-         (define frame (produce t))
-         (define dt-ms (sync fps))
-         (current-fps (/ 1000 dt-ms))
-         (put-frame! frame)
-         (define dt
-           (floor
-            (inexact->exact
-             (floor
-              (* (/ dt-ms 1000)
-                 (current-sample-rate))))))
-         (when (zero? (read-samples! dt))
-           (loop (+ t dt))))))
-    (void)))
+    (consume-thread
+     (thread
+      (lambda ()
+        (let loop ([t 0])
+          (set! t0 (- t time-offset))
+          (define frame (produce t))
+          (define dt-ms (sync fps))
+          (current-fps (/ 1000 dt-ms))
+          (put-frame! frame)
+          (define dt
+            (floor
+             (inexact->exact
+              (floor
+               (* (/ dt-ms 1000)
+                  (current-sample-rate))))))
+          (when (zero? (read-samples! dt))
+            (loop (+ t dt))))
+        (finish))))))
