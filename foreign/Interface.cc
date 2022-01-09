@@ -48,8 +48,8 @@ extern "C" {
     return new BufferedAudioStream(stream);
   }
 
-  int ecktra_buffered_stream_read(BufferedAudioStream *stream, double *buf, int *cnt) {
-    return stream->buf_read(buf, cnt);
+  int ecktra_buffered_stream_read(BufferedAudioStream *stream, double *buf, int *cnt, int destroy) {
+    return stream->buf_read(buf, cnt, destroy);
   }
 
   int ecktra_buffered_stream_current_buffered(BufferedAudioStream *stream) {
@@ -58,6 +58,10 @@ extern "C" {
 
   int ecktra_buffered_stream_ensure_buffered(BufferedAudioStream *stream, int *n) {
     return stream->ensured_buffered(n);
+  }
+
+  BufferedAudioStream *ecktra_buffered_stream_fork(BufferedAudioStream *stream) {
+    return stream->fork();
   }
 
   void ecktra_buffered_stream_close(BufferedAudioStream *stream) {

@@ -117,38 +117,56 @@ namespace ecktra {
   };
 
   struct BufferedAudioStream {
-    std::shared_ptr<AudioStream> as;
     std::mutex lock;
     std::condition_variable reads;
     std::deque<double> buf;
-    bool closing = 0;
+    std::unique_ptr<BufferedAudioStream> child;
+
+    std::shared_ptr<AudioStream> as;
     std::thread t;
     int err = 0;
+    bool closing = false;
+    bool owner = false;
+    BufferedAudioStream(std::deque<double> &buf): buf(buf) {}
     BufferedAudioStream(std::shared_ptr<AudioStream> *ptr):
       as(*ptr),
-      t(&BufferedAudioStream::run, this)
+      t(&BufferedAudioStream::run, this),
+      owner(true)
     {}
     ~BufferedAudioStream() {
-      closing = true;
-      t.join();
+      if (owner) {
+        closing = true;
+        t.join();
+      }
+    }
+    BufferedAudioStream *fork() {
+      BufferedAudioStream *parent = this;
+      while (parent->child) parent = parent->child.get();
+      parent->child = std::make_unique<BufferedAudioStream>(buf);
+      return parent->child.get();
     }
     void run() {
       while (!closing) {
         double *asbuf;
         int assz;
         int ret = as->read(&asbuf, &assz);
-
-        {
-          const std::lock_guard<std::mutex> _(lock);
-          if (ret < 0) {
-            err = ret;
-          } else {
-            std::copy(asbuf, asbuf + assz, std::back_inserter(buf));
-          }
-        }
-        reads.notify_all();
+        receive(ret, asbuf, assz);
         if (err) break;
       }
+    }
+    void receive(int ret, double *asbuf, int assz) {
+      {
+        const std::lock_guard<std::mutex> _(lock);
+        if (ret < 0) {
+          err = ret;
+        } else {
+          std::copy(asbuf, asbuf + assz, std::back_inserter(buf));
+        }
+      }
+      if (child) {
+        child->receive(ret, asbuf, assz);
+      }
+      reads.notify_all();
     }
     int current_buffered() {
       std::lock_guard<std::mutex> _(lock);
@@ -172,11 +190,13 @@ namespace ecktra {
       }
       return e;
     }
-    int buf_read(double *out, int *count) {
+    int buf_read(double *out, int *count, int destroy) {
       std::lock_guard<std::mutex> _(lock);
       int copied = std::min(buf.size(), (size_t) *count);
       std::copy(buf.begin(), buf.begin() + copied, out);
-      buf.erase(buf.begin(), buf.begin() + copied);
+      if (destroy) {
+        buf.erase(buf.begin(), buf.begin() + copied);
+      }
       *count -= copied;
       return err;
     }

@@ -71,10 +71,14 @@
              [(< err 0) (raise-errno err)]
              [else (cons buf bufsz)])))
 
+(define-ecktra ecktra-buffered-stream-fork
+  (_fun _BufferedAudioStream -> _BufferedAudioStream))
+
 (define-ecktra ecktra-buffered-stream-read
   (_fun [as : _BufferedAudioStream]
         [buf : _pointer]
         [bufsz : (_ptr io _int)]
+        [destroy : _int]
         -> [err : _int]
         -> (cond
              [(= err ecktra-eof) bufsz]

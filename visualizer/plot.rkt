@@ -5,15 +5,11 @@
          racket/class
          racket/sequence)
 
-(provide plot-2d-x-y)
+(provide plot-2d-points
+         plot-2d-x-y)
 
-(define (plot-2d-x-y width height frame)
-  (define frame-width (sub1 (sequence-length frame)))
+(define (plot-2d-points width height points)
   (define path (new draw/dc-path%))
-  (define points
-    (for/list ([(yv x) (in-indexed frame)])
-      (cons (* width (/ x frame-width))
-            (/ (- height (* yv (- height 2))) 2))))
   (send path move-to (caar points) (cdar points))
   (send path lines (cdr points) 0 0)
   (define pen
@@ -30,10 +26,22 @@
     (send dc draw-path path dx dy))
   (pict/unsafe-dc draw width height))
 
+(define (plot-2d-x-y width height frame)
+  (define frame-width (sub1 (sequence-length frame)))
+  (define points
+    (for/list ([(yv x) (in-indexed frame)])
+      (cons (* width (/ x frame-width))
+            (/ (- height (* yv (- height 2))) 2))))
+  (plot-2d-points width height points))
+
 (module* typed typed/racket/base
   (require typed/pict)
-  (require/typed (submod "..")
-    [plot-2d-x-y (-> Integer Integer
-                     (U FlVector (Sequenceof Real))
-                     pict)])
-  (provide plot-2d-x-y))
+  (require/typed/provide (submod "..")
+    [plot-2d-points
+     (-> Integer Integer
+         (Listof (Pair Real Real))
+         pict)]
+    [plot-2d-x-y
+     (-> Integer Integer
+         (U FlVector (Sequenceof Real))
+         pict)]))

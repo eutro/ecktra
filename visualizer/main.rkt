@@ -50,12 +50,14 @@
          (set! t0 (- t time-offset))
          (define frame (produce t))
          (define dt-ms (sync fps))
-         (printf "FPS: ~a\n" (/ 1000 dt-ms))
+         (current-fps (/ 1000 dt-ms))
          (put-frame! frame)
          (define dt
            (floor
-            (* (/ max-fps)
-               (current-sample-rate))))
+            (inexact->exact
+             (floor
+              (* (/ dt-ms 1000)
+                 (current-sample-rate))))))
          (when (zero? (read-samples! dt))
            (loop (+ t dt))))))
     (void)))

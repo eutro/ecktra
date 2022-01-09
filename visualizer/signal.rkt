@@ -12,11 +12,13 @@
 (: pure-signal-meta signal-meta)
 (define pure-signal-meta (signal-meta (void)))
 (: current-sample-rate (Parameterof Integer))
-(define current-sample-rate (make-parameter 441000))
+(define current-sample-rate (make-parameter 44100))
 (: current-latency (Parameterof Time))
 (define current-latency (make-parameter 1))
 (: current-backbuf (Parameterof Time))
 (define current-backbuf (make-parameter 0))
+(: current-fps (Parameterof Real))
+(define current-fps (make-parameter 30))
 
 (struct (T) signal
   ([produce : (-> Time T)]
