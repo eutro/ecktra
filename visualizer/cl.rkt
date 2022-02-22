@@ -126,7 +126,7 @@
          "-i"
          ,input
 
-         "-af" ,(format "asetrate=~a" (vconfig-rate vcfg))
+         "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
          "-map" "0"
          "-ac" "1"
          "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")
@@ -203,18 +203,6 @@
     (if deplete
         (depleting-read)
         normal-read)))
-
-#;
-(begin ;; portaudio input
-  (define ((portaudio-input-handler input) vcfg audio-out-port)
-    (dynamic-require
-     'portaudio
-     #f
-     (lambda ()
-       (raise-user-error "portaudio package not installed")))
-    (define (portaudio-require sym)
-      (dynamic-require 'portaudio sym))
-    (void)))
 
 #;
 (begin ;; file output TODO

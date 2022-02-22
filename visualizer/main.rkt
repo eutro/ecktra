@@ -9,12 +9,13 @@
   [current-plumber (Parameterof Plumber)]
   [plumber-add-flush! (->* (Plumber (-> PlumberFlushHandle Any)) (Any) PlumberFlushHandle)]
   [plumber-flush-handle-remove! (-> PlumberFlushHandle Void)])
-(unsafe-require/typed "cl.rkt"
-  [parse-cl (-> (Values (-> (RingBuffer Flonum) Integer Integer)
-                        (-> Any Void)
-                        (-> Void)
-                        (Evtof Real)
-                        (-> Thread Void)))])
+(unsafe-require/typed
+ "cl.rkt"
+ [parse-cl (-> (Values (-> (RingBuffer Flonum) Integer (U True EOF))
+                       (-> Any Void)
+                       (-> Void)
+                       (Evtof Real)
+                       (-> Thread Void)))])
 
 (provide start-with)
 
