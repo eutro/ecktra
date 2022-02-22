@@ -2,15 +2,10 @@
 
 (require typed/racket/unsafe
          racket/math
-         racket/flonum)
-(unsafe-require/typed
- "../foreign/fft.rkt"
- [fft! (->* (Boolean
-             FlVector)
-            ((Option FlVector)
-             (Option FlVector)
-             (Option FlVector))
-            Void)])
+         math/base
+         math/flonum
+         racket/flonum
+         racket/unsafe/ops)
 
 (provide (all-defined-out))
 
@@ -21,6 +16,114 @@
  'untyped
  [unsafe-cast (All (A B) (-> A B))])
 (provide unsafe-cast)
+
+(: fft! (->* (Boolean FlVector)
+             [(Option FlVector)
+              (Option FlVector)
+              (Option FlVector)]
+             Void))
+(define (fft! inverse real [imag #f] [mag #f] [arg #f])
+  (define len : Fixnum (flvector-length real))
+  (unless (power-of-two? len)
+    (raise-argument-error 'fft "power-of-two?" len))
+  (let ()
+    (define (correct-length? [v : (Option FlVector)])
+      (or (not v) (= (flvector-length v) len)))
+    (define to-check (list imag mag arg))
+    (unless (andmap correct-length? to-check)
+      (raise-arguments-error 'fft! "expected flvectors of same length"
+                             "real" real
+                             "imag" imag
+                             "mag" mag
+                             "arg" arg)))
+  (define x real)
+  (define y (or imag (make-flvector len)))
+
+  (: log2 (-> Integer Integer))
+  (define (log2 n)
+    (let loop
+        ([n n]
+         [l2 0])
+      (if (= 1 n)
+          l2
+          (loop (quotient n 2) (add1 l2)))))
+
+  (define m (log2 len))
+
+  ;; do the bit reversal
+  (define i2 : Fixnum (unsafe-fxrshift len 1))
+  (define j : Fixnum 0)
+  (for ([i (in-range (sub1 len))])
+    (when (unsafe-fx< i j)
+      (define tx (unsafe-flvector-ref x i))
+      (define ty (unsafe-flvector-ref y i))
+      (unsafe-flvector-set! x i (unsafe-flvector-ref x j))
+      (unsafe-flvector-set! y i (unsafe-flvector-ref y j))
+      (unsafe-flvector-set! x j tx)
+      (unsafe-flvector-set! y j ty))
+    (let loop ([k i2])
+      (cond
+        [(unsafe-fx<= k j)
+         (set! j (unsafe-fx- j k))
+         (loop (unsafe-fxrshift k 1))]
+        [else
+         (set! j (unsafe-fx+ j k))])))
+
+  ;; Compute the FFT
+  (define c1 : Flonum -1.0)
+  (define c2 : Flonum 0.0)
+  (define l2 : Fixnum 1)
+  (for ([l (in-range m)])
+    (define l1 : Fixnum l2)
+    (set! l2 (unsafe-fxlshift l2 1))
+    (define u1 : Flonum 1.0)
+    (define u2 : Flonum 0.0)
+    (for ([j (in-range l1)])
+      (for ([i (in-range j len l2)])
+        (define i1 (unsafe-fx+ i l1))
+        (define t1
+          (unsafe-fl- (unsafe-fl* u1 (unsafe-flvector-ref x i1))
+                      (unsafe-fl* u2 (unsafe-flvector-ref y i1))))
+        (define t2
+          (unsafe-fl+ (unsafe-fl* u1 (unsafe-flvector-ref y i1))
+                      (unsafe-fl* u2 (unsafe-flvector-ref x i1))))
+        (unsafe-flvector-set!
+         x i1 (unsafe-fl- (unsafe-flvector-ref x i) t1))
+        (unsafe-flvector-set!
+         y i1 (unsafe-fl- (unsafe-flvector-ref y i) t2))
+        (unsafe-flvector-set!
+         x i (unsafe-fl+ (unsafe-flvector-ref x i) t1))
+        (unsafe-flvector-set!
+         y i (unsafe-fl+ (unsafe-flvector-ref y i) t2)))
+      (define z
+        (unsafe-fl- (unsafe-fl* u1 c1)
+                    (unsafe-fl* u2 c2)))
+      (set! u2
+        (unsafe-fl+ (unsafe-fl* u1 c2)
+                    (unsafe-fl* u2 c1)))
+      (set! u1 z))
+    (set! c2 (unsafe-flsqrt (unsafe-fl/ (unsafe-fl- 1.0 c1) 2.0)))
+    (unless inverse
+      (set! c2 (unsafe-fl- 0.0 c2)))
+    (set! c1 (unsafe-flsqrt (unsafe-fl/ (unsafe-fl+ 1.0 c1) 2.0))))
+
+  ;; scale for inverse transform
+  (when inverse
+    (define fllen : Flonum (exact->inexact len))
+    (for ([i (in-range len)])
+      (unsafe-flvector-set!
+       x i (unsafe-fl/ (unsafe-flvector-ref x i) fllen))
+      (unsafe-flvector-set!
+       y i (unsafe-fl/ (unsafe-flvector-ref y i) fllen))))
+
+  (when (or arg mag)
+    (for ([i (in-range len)])
+      (define re : Flonum (unsafe-flvector-ref x i))
+      (define im : Flonum (unsafe-flvector-ref y i))
+      (when arg (unsafe-flvector-set! arg i (unsafe-flatan (unsafe-fl/ re im))))
+      (when mag (unsafe-flvector-set! mag i (flhypot re im)))))
+
+  (void))
 
 (: flvector-dft-mag! (-> FlVector FlVector))
 (define (flvector-dft-mag! v)

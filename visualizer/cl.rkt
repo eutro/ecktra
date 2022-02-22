@@ -11,7 +11,6 @@
          ;; file/convertible
          "../util/fps.rkt"
          "../util/ringbuf.rkt"
-         ;; "../foreign/decode.rkt"
          "signal.rkt")
 
 (provide parse-cl)
@@ -275,6 +274,7 @@
     (define ffplay-in* #f)
     (define handle* #f)
     (when play
+      ;; cross our fingers and hope that they remain sufficiently in sync...
       (match-define
         (list #f ;; out
               ffplay-in ;; in
@@ -291,6 +291,7 @@
          "-f"
          (if (system-big-endian?) "f64be" "f64le")
          "-i" "pipe:0"))
+      (write-bytes (make-bytes (* sample-size-bytes (current-latency))) ffplay-in) ;; silence it for the windup
       (set! ffplay-in* ffplay-in)
       (set! handle* handle))
     (define fps (fps-event (vconfig-fps vcfg)))
