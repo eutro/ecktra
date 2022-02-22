@@ -1,8 +1,7 @@
 #!/usr/bin/env racket
 #lang ecktra/visualizer
 
-(require racket/flonum racket/math racket/vector
-         math pict)
+(require racket/flonum racket/math racket/vector math pict)
 
 (define sample-rate (current-sample-rate))
 (define bufsz (expt 2 16))

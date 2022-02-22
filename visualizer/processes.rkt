@@ -1,6 +1,6 @@
 #lang typed/racket/base
 
-(require "signal.rkt" racket/flonum)
+(require "signal.rkt" racket/flonum "../util/ringbuf.rkt")
 (provide (all-defined-out))
 
 (: current-time (Signal Time))
@@ -58,3 +58,29 @@
 (: time-travel-backward (All (T) (-> Time (Signal T) (Signal T))))
 (define (time-travel-backward by signal)
   (time-travel-forward (- by) signal))
+
+(: signal-fold (All (A B) (->* [(Signal A) (-> B A B) B] [Positive-Integer] (Signal B))))
+(define (signal-fold signal proc acc [backbuf 1])
+  (define buf (make-ring-buffer backbuf acc))
+  (define buftime 0)
+  (define old-prod (signal-produce signal))
+  (: new-prod (-> Time B))
+  (define (new-prod t)
+    (cond
+      [(<= t buftime)
+       (define idx (+ backbuf (- t buftime 1)))
+       (when (negative? idx)
+         (raise-arguments-error 'signal-fold
+                                "sample out of range"
+                                "t" t))
+       (ring-buffer-nth buf idx)]
+      [else
+       (let loop ()
+         (set! buftime (add1 buftime))
+         (define acc (ring-buffer-nth buf (sub1 backbuf)))
+         (define next-val (proc acc (old-prod buftime)))
+         (ring-buffer-push! buf next-val)
+         (if (>= buftime t)
+             next-val
+             (loop)))]))
+  (swap-produce new-prod signal))

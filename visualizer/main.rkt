@@ -3,6 +3,12 @@
 (require "signal.rkt"
          "../util/ringbuf.rkt"
          typed/racket/unsafe)
+(unsafe-require/typed racket/base
+  [#:opaque Plumber plumber?]
+  [#:opaque PlumberFlushHandle plumber-flush-handle?]
+  [current-plumber (Parameterof Plumber)]
+  [plumber-add-flush! (->* (Plumber (-> PlumberFlushHandle Any)) (Any) PlumberFlushHandle)]
+  [plumber-flush-handle-remove! (-> PlumberFlushHandle Void)])
 (unsafe-require/typed "cl.rkt"
   [parse-cl (-> (Values (-> (RingBuffer Flonum) Integer Integer)
                         (-> Any Void)
@@ -42,6 +48,7 @@
     (define produce (signal-produce out))
     
     (read-samples! latency)
+    (define flush-handle (plumber-add-flush! (current-plumber) (lambda (_) (finish))))
     (consume-thread
      (thread
       (lambda ()
@@ -57,6 +64,7 @@
               (floor
                (* (/ dt-ms 1000)
                   (current-sample-rate))))))
-          (when (zero? (read-samples! dt))
+          (unless (eof-object? (read-samples! dt))
             (loop (+ t dt))))
+        (plumber-flush-handle-remove! flush-handle)
         (finish))))))

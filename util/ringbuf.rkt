@@ -6,13 +6,20 @@
          ring-buffer-push-all!
          ring-buffer-nth
          ring-buffer-array
+         sliding-buffer-pop!
          make-ring-buffer
+         make-sliding-buffer
          RingBuffer)
 
 (struct (T) ring-buffer
   ([buf : (Mutable-Vectorof T)]
    [offset : Integer])
   #:type-name RingBuffer
+  #:mutable)
+
+(struct (T) sliding-buffer ring-buffer
+  ([read-offset : Integer])
+  #:type-name SlidingBuffer
   #:mutable)
 
 (: ring-buffer-push! (All (T) (-> (RingBuffer T) T Void)))
@@ -68,6 +75,22 @@
 (define (ring-buffer->vector ringbuf)
   (build-vector (vector-length (ring-buffer-buf ringbuf))
                 (lambda ([i : Index]) (ring-buffer-nth ringbuf i))))
+
+(: sliding-buffer-pop! (All (T) (-> (SlidingBuffer T) Integer (-> Integer T Void) Void)))
+(define (sliding-buffer-pop! slbuf n accept!)
+  (define read-start (sliding-buffer-read-offset slbuf))
+  (for ([i (in-range n)])
+    (accept! i (ring-buffer-nth slbuf (+ read-start i))))
+  (define buf (ring-buffer-buf slbuf))
+  (define size (vector-length buf))
+  (set-sliding-buffer-read-offset! slbuf (modulo (+ read-start n) size)))
+
+(: make-sliding-buffer (All (T) (-> (RingBuffer T) (SlidingBuffer T))))
+(define (make-sliding-buffer ringbuf)
+  (sliding-buffer
+   (ring-buffer-buf ringbuf)
+   (ring-buffer-offset ringbuf)
+   0))
 
 (module+ test
   (require typed/rackunit)
