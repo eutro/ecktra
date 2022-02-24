@@ -111,9 +111,20 @@
    (set! input* input))
 
   (current-sample-rate rate*)
+  (current-subprocess-custodian-mode 'kill) ;; just let them die
   (output-handler (vconfig rate* fps* (input-handler input*) deplete*)))
 
 (define sample-size-bytes 8)
+
+(define loopback-addr "127.0.0.1")
+
+(define (make-ephemeral-address) ;; "ephemeral"
+  (list loopback-addr (or (getenv "ECKTRA_MPEGTS_PORT") "40167")))
+
+(define (listener->addr+port listener)
+  (define-values (addr port _oa _op)
+    (tcp-addresses listener #t))
+  (list addr port))
 
 (begin ;; ffmpeg input
   (define (ffmpeg* args
@@ -132,7 +143,7 @@
        subprocess
        proc-out
        proc-in
-       (current-error-port) ;; stderr
+       (current-error-port)
        (find-executable-path command)
        "-hide_banner"
        args))
@@ -151,24 +162,19 @@
        (close-input-port stdout)
        (close-output-port stdin)
        (subprocess-kill proc #true #;"Maybe we could be nicer?")))
-    (values stdin stdout))
+    (values proc stdin stdout))
 
   (define (((ffmpeg-input-handler args) input) . outs)
     (-> list? (-> string? (-> input-port?)))
-    (define sockets
-      (for/list ([_ outs]
-                 [port (range 54323 55000)])
-        (list "127.0.0.1" port)))
     (define out-args
       (append*
-       (for/list ([args outs]
-                  [socket sockets])
-         `("-map" "0" ,@args ,(apply format "tcp://~a:~a?listen" socket)))))
-    (define-values (stdin stdout)
+       (for/list ([args outs])
+         `("-map" "0" ,@args))))
+    (define-values (_proc _stdin stdout)
       (ffmpeg*
        `[,@args "-i" ,input ,@out-args]))
 
-    (apply values stdout sockets)))
+    stdout))
 
 (define (read-next-from-port port deplete)
   (define (push-from-bytes buf sample-bytes byte-count)
@@ -222,12 +228,27 @@
       (depleting-read)
       normal-read))
 
-(define (pcm-args vcfg)
+(define/contract (pcm-args vcfg listener)
+  (-> vconfig? tcp-listener? list?)
   `[
     "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
     "-ac" "1"
     "-f" "data"
-    "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")])
+    "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")
+    ,(apply format "tcp://~a:~a" (listener->addr+port listener))])
+
+(define (get-pcm-ports ffmpeg-port listener)
+  (define ffmpeg-port-closed (port-closed-evt ffmpeg-port))
+  (define pcm-ports-or-closed-port
+    (sync (tcp-accept-evt listener)
+          ffmpeg-port-closed))
+  (when (eq? ffmpeg-port-closed pcm-ports-or-closed-port)
+    (exit 1))
+  (match-define (list pcm-port tcp-out) pcm-ports-or-closed-port)
+  (values pcm-port tcp-out))
+
+(define (format-tcp port+addr [args ""])
+  (format "tcp://~a:~a~a" (first port+addr) (second port+addr) args))
 
 (begin ;; GUI output
   (define-runtime-module-path gui-path "gui.rkt")
@@ -235,23 +256,26 @@
     (define (gui-require s) (dynamic-require gui-path s))
     ((gui-require 'init-gui))
 
+    (define pcm-listener (tcp-listen 0 1 #f loopback-addr))
+
     (define-values (read-next! close)
       (cond
         [play
-         (define-values (ffmpeg-port
-                         mpeg-socket
-                         pcm-socket)
+         (define mpegts-port (make-ephemeral-address))
+         (define ffmpeg-port
            ((vconfig-input vcfg)
-            `["-f" "mpegts"]
-            (pcm-args vcfg)))
+            `["-f" "mpegts" ,(format-tcp mpegts-port "?listen")]
+            (pcm-args vcfg pcm-listener)))
+
          ;; cross our fingers and hope that they remain sufficiently in sync...
-         (define-values (ffplay-in ffplay-out)
+         (sleep 3) ;; sleep 3 seconds so the port is awake >:(
+         (define-values (_proc ffplay-in ffplay-out)
            (ffmpeg*
             #:command "ffplay"
-            `["-nodisp" "-f" "mpegts" ,(apply format "tcp://~a:~a" mpeg-socket)]))
-         (sleep 3) ;; TODO do better
-         (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
-         (file-stream-buffer-mode pcm-port 'block)
+            `["-nodisp" "-autoexit" "-f" "mpegts" "-i" ,(format-tcp mpegts-port)]))
+
+         (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
+
          (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
          (define (close)
            (close-input-port ffmpeg-port)
@@ -262,9 +286,8 @@
            (close-output-port ffplay-in))
          (values read-next! close)]
         [else
-         (define-values (ffmpeg-port pcm-socket) ((vconfig-input vcfg) (pcm-args vcfg)))
-         (sleep 3) ;; TODO do better
-         (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
+         (define ffmpeg-port ((vconfig-input vcfg) (pcm-args vcfg pcm-listener)))
+         (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
          (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
          (define (close)
            (close-input-port ffmpeg-port)
@@ -279,45 +302,67 @@
      (gui-require 'put-frame!)
      (lambda () (close))
      fps
-     (lambda (_) (void)))))
+     (lambda (_)
+       #;
+       (parameterize ([current-namespace (make-base-namespace)])
+         (read-eval-print-loop))
+       (void)))))
 
-(begin ;; file output TODO
+(begin ;; file output
   (define ((save-output out-file) vcfg)
     (define max-fps (vconfig-fps vcfg))
-    (define counter 0)
-    (define-values (ffmpeg-port pcm-socket mpeg-socket)
+    (define pcm-listener (tcp-listen 0 1 #f loopback-addr))
+    (define mpegts-listener (tcp-listen 0 1 #f loopback-addr))
+    (define ffmpeg-port
       ((vconfig-input vcfg)
-       (pcm-args vcfg)
-       `["-f" "mpegts"]))
-    (sleep 3) ;; TODO do better
-    (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
-    (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+       (pcm-args vcfg pcm-listener)
+       `["-f" "mpegts" ,(format-tcp (listener->addr+port mpegts-listener))]))
     (define encoder-thread
       (thread
        (lambda ()
-         (define-values (ffmpeg-stdin ffmpeg-stdout)
-           (ffmpeg*
-            `[
-              "-f" "mpegts"
-              "-i" ,(apply format "tcp://~a:~a" mpeg-socket)
+         (define mpegts-out-listener (tcp-listen 0 1 #f loopback-addr))
+         (define stdin* #f)
+         (define proc* #f)
+         (define (get-stdin width height)
+           (unless stdin*
+             (define-values (ffmpeg-proc ffmpeg-stdin _ffmpeg-stdout)
+               (ffmpeg*
+                `[
+                  "-f" "mpegts" "-i" ,(format-tcp (listener->addr+port mpegts-out-listener))
 
-              "-r" ,(format "~a" max-fps)
-              "-f" "image2pipe"
-              "-s" "1024x400"
-              "-i" "-"
+                  "-r" ,(format "~a" max-fps)
+                  "-f" "image2pipe"
+                  "-s" ,(format "~ax~a"
+                                (inexact->exact (floor width))
+                                (inexact->exact (floor height)))
+                  "-i" "pipe:0"
 
-              "-vcodec" "libx264"
-              "-crf" "25"
-              "-pix_fmt" "yuv420p"
-              ,out-file]))
+                  "-vf" "pad=ceil(iw/2)*2:ceil(ih/2)*2:color=white"
+
+                  "-vcodec" "libx264"
+                  "-crf" "25"
+                  "-pix_fmt" "yuv420p"
+                  ,out-file]))
+             (set! stdin* ffmpeg-stdin)
+             (set! proc* ffmpeg-proc))
+           stdin*)
+         (thread
+          (lambda ()
+            (define-values (mpegts-in mpegts-tcp-out) (tcp-accept mpegts-listener))
+            (define-values (mpegts-tcp-in mpegts-out) (tcp-accept mpegts-out-listener))
+            (copy-port mpegts-in mpegts-out)
+            (close-output-port mpegts-out)))
          (let loop ()
            (define frame (thread-receive))
            (when frame
-             (define png-bytes (convert frame 'png-bytes))
-             (write-bytes png-bytes ffmpeg-stdin)
-             (set! counter (add1 counter))
+             (match-define (list bs width height _ _) (convert frame 'png-bytes+bounds))
+             (write-bytes bs (get-stdin width height))
              (loop)))
-         (close-output-port ffmpeg-stdin))))
+         (when stdin*
+           (close-output-port stdin*)
+           (subprocess-wait proc*)))))
+    (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
+    (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
     (values
      read-next!
      (lambda (frame)
