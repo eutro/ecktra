@@ -84,3 +84,25 @@
              next-val
              (loop)))]))
   (swap-produce new-prod signal))
+
+(: signal-buffer (All (A) (-> (Signal A) A Positive-Integer (Signal A))))
+(define (signal-buffer signal dflt bufsz)
+  (define buf (make-ring-buffer bufsz dflt))
+  (define buftime 0)
+  (define old-prod (signal-produce signal))
+  (: new-prod (-> Time A))
+  (define (new-prod t)
+    (cond
+      [(<= t buftime)
+       (define idx (+ bufsz (- t buftime 1)))
+       (when (negative? idx)
+         (raise-arguments-error 'signal-buffer
+                                "sample out of range"
+                                "t" t))
+       (ring-buffer-nth buf idx)]
+      [else
+       (for ([i (in-range (min bufsz (- t buftime)))])
+         (ring-buffer-push! buf (old-prod (+ buftime i))))
+       (set! buftime t)
+       (ring-buffer-nth buf (sub1 bufsz))]))
+  (swap-produce new-prod signal))
