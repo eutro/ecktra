@@ -9,7 +9,7 @@
          racket/tcp
          (except-in ffi/unsafe ->)
          ffi/vector
-         ;; file/convertible
+         file/convertible
          "../util/fps.rkt"
          "../util/ringbuf.rkt"
          "signal.rkt")
@@ -19,7 +19,7 @@
 (struct vconfig
   (rate ;; integer?
    fps ;; integer?
-   input ;; (-> input-stream? #;"mpegts")
+   input ;;
    deplete ;; boolean?
    ))
 
@@ -86,7 +86,9 @@
            #:program flag
            #:argv args
            #:args rest-args
-           (recur rest-args)))
+           (begin
+             (set! output-handler (save-output out-file))
+             (recur rest-args))))
         (list "Save to a file" "out-file" "option")]
        [("--gui")
         =>
@@ -220,55 +222,12 @@
       (depleting-read)
       normal-read))
 
-#;
-(begin ;; file output TODO
-  (define ((save-output out-file) vcfg)
-    (define max-fps (vconfig-fps vcfg))
-    (define counter 0)
-    (define encoder-thread
-      (thread
-       (lambda ()
-         (match-define (list #f ;; stdout
-                             ffmpeg-stdin
-                             _ ;; pid
-                             #f ;; stderr
-                             _ ;; ffmpeg-control
-                             )
-           (apply
-            process*/ports
-            (current-output-port)
-            #f
-            (current-error-port)
-            (find-executable-path "ffmpeg")
-
-            `[,@(format-ffmpeg-args vcfg)
-              "-r" ,(format "~a" max-fps)
-              "-f" "image2pipe"
-              "-s" "1024x400"
-              "-i" "-"
-              "-vcodec" "libx264"
-              "-crf" "25"
-              "-pix_fmt" "yuv420p"
-              ,out-file]))
-         (let loop ()
-           (define frame (thread-receive))
-           (when frame
-             (define png-bytes (convert frame 'png-bytes))
-             (write-bytes png-bytes ffmpeg-stdin)
-             (set! counter (add1 counter))
-             (loop)))
-         (close-output-port ffmpeg-stdin))))
-    (values
-     ((vconfig-input vcfg) vcfg)
-     (lambda (frame)
-       (thread-send encoder-thread frame)
-       (void))
-     (lambda () ;; finish
-       (close-input-port ffmpeg-port)
-       (thread-send encoder-thread #f)
-       (thread-wait encoder-thread))
-     (wrap-evt always-evt (lambda (_) (/ 1000 max-fps)))
-     thread-wait)))
+(define (pcm-args vcfg)
+  `[
+    "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
+    "-ac" "1"
+    "-f" "data"
+    "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")])
 
 (begin ;; GUI output
   (define-runtime-module-path gui-path "gui.rkt")
@@ -276,12 +235,6 @@
     (define (gui-require s) (dynamic-require gui-path s))
     ((gui-require 'init-gui))
 
-    (define pcm-args
-      `[
-        "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
-        "-ac" "1"
-        "-f" "data"
-        "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")])
     (define-values (read-next! close)
       (cond
         [play
@@ -290,7 +243,7 @@
                          pcm-socket)
            ((vconfig-input vcfg)
             `["-f" "mpegts"]
-            pcm-args))
+            (pcm-args vcfg)))
          ;; cross our fingers and hope that they remain sufficiently in sync...
          (define-values (ffplay-in ffplay-out)
            (ffmpeg*
@@ -309,7 +262,7 @@
            (close-output-port ffplay-in))
          (values read-next! close)]
         [else
-         (define-values (ffmpeg-port pcm-socket) ((vconfig-input vcfg) pcm-args))
+         (define-values (ffmpeg-port pcm-socket) ((vconfig-input vcfg) (pcm-args vcfg)))
          (sleep 3) ;; TODO do better
          (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
          (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
@@ -327,3 +280,54 @@
      (lambda () (close))
      fps
      (lambda (_) (void)))))
+
+(begin ;; file output TODO
+  (define ((save-output out-file) vcfg)
+    (define max-fps (vconfig-fps vcfg))
+    (define counter 0)
+    (define-values (ffmpeg-port pcm-socket mpeg-socket)
+      ((vconfig-input vcfg)
+       (pcm-args vcfg)
+       `["-f" "mpegts"]))
+    (sleep 3) ;; TODO do better
+    (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
+    (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+    (define encoder-thread
+      (thread
+       (lambda ()
+         (define-values (ffmpeg-stdin ffmpeg-stdout)
+           (ffmpeg*
+            `[
+              "-f" "mpegts"
+              "-i" ,(apply format "tcp://~a:~a" mpeg-socket)
+
+              "-r" ,(format "~a" max-fps)
+              "-f" "image2pipe"
+              "-s" "1024x400"
+              "-i" "-"
+
+              "-vcodec" "libx264"
+              "-crf" "25"
+              "-pix_fmt" "yuv420p"
+              ,out-file]))
+         (let loop ()
+           (define frame (thread-receive))
+           (when frame
+             (define png-bytes (convert frame 'png-bytes))
+             (write-bytes png-bytes ffmpeg-stdin)
+             (set! counter (add1 counter))
+             (loop)))
+         (close-output-port ffmpeg-stdin))))
+    (values
+     read-next!
+     (lambda (frame)
+       (thread-send encoder-thread frame)
+       (void))
+     (lambda () ;; finish
+       (close-input-port ffmpeg-port)
+       (close-output-port tcp-out)
+       (close-input-port pcm-port)
+       (thread-send encoder-thread #f)
+       (thread-wait encoder-thread))
+     (wrap-evt always-evt (lambda (_) (/ 1000 max-fps)))
+     thread-wait)))
