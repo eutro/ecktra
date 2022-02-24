@@ -2,11 +2,12 @@
 
 (require racket/cmdline
          racket/port
-         racket/system
          racket/list
          racket/runtime-path
          racket/match
-         ffi/unsafe
+         racket/contract
+         racket/tcp
+         (except-in ffi/unsafe ->)
          ffi/vector
          ;; file/convertible
          "../util/fps.rkt"
@@ -15,7 +16,12 @@
 
 (provide parse-cl)
 
-(struct vconfig (rate fps input deplete))
+(struct vconfig
+  (rate ;; integer?
+   fps ;; integer?
+   input ;; (-> input-stream? #;"mpegts")
+   deplete ;; boolean?
+   ))
 
 (define (parse-cl)
   (define rate* 44100)
@@ -108,101 +114,111 @@
 (define sample-size-bytes 8)
 
 (begin ;; ffmpeg input
-  (define (((ffmpeg-input-handler args) input) vcfg audio-out-port)
-    (match-define
-      (list stdout
-            #f ;; stdin
-            _ ;; pid
-            #f ;; stderr
-            handle ;; handle
-            )
+  (define (ffmpeg* args
+                   #:command [command "ffmpeg"]
+                   #:stdin [in #f]
+                   #:stdout [out #f])
+    (define-values (proc-in proc-out) (values #f #f))
+    (when (and in (file-stream-port? in)) (set! proc-in in) (set! in #f))
+    (when (and out (file-stream-port? out)) (set! proc-out out) (set! out #f))
+    (define-values
+      (proc
+       stdout
+       stdin
+       _stderr)
       (apply
-       process*/ports
-       #f ;; stdout
-       (open-input-bytes #"") ;; stdin
+       subprocess
+       proc-out
+       proc-in
        (current-error-port) ;; stderr
-       (find-executable-path "ffmpeg")
-       `[,@args
-         "-i"
-         ,input
-
-         "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
-         "-map" "0"
-         "-ac" "1"
-         "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")
-         "-f" "data"
-         "pipe:1"]))
-    (define ports-to-close (list stdout))
-    (file-stream-buffer-mode stdout 'block)
-    (when audio-out-port
-      (define old-stdout stdout)
-      (define-values (new-stdout new-stdout-input) (make-pipe))
+       (find-executable-path command)
+       "-hide_banner"
+       args))
+    (when in
       (thread
        (lambda ()
-         (copy-port old-stdout
-                    audio-out-port
-                    new-stdout-input)))
-      (set! stdout new-stdout)
-      (set! ports-to-close (list* new-stdout new-stdout-input ports-to-close)))
-    (values (read-next-from-port stdout (vconfig-deplete vcfg))
-            (lambda ()
-              (handle 'kill)
-              (for ([port (in-list ports-to-close)])
-                (if (input-port? port)
-                    (close-input-port port)
-                    (close-output-port port))))))
+         (copy-port in stdin)
+         (close-output-port stdin))))
+    (when out
+      (thread
+       (lambda ()
+         (copy-port stdout out))))
+    (thread
+     (lambda ()
+       (sync (port-closed-evt stdout))
+       (close-input-port stdout)
+       (close-output-port stdin)
+       (subprocess-kill proc #true #;"Maybe we could be nicer?")))
+    (values stdin stdout))
 
-  (define (read-next-from-port port deplete)
-    (define (push-from-bytes buf sample-bytes byte-count)
-      (define bytes-ptr (u8vector->cpointer sample-bytes))
-      (define (ref i) (ptr-ref bytes-ptr _double i))
-      (define sample-count (quotient byte-count sample-size-bytes))
-      (ring-buffer-push-all! buf sample-count ref)
-      (port-commit-peeked
-       (* sample-count sample-size-bytes)
-       (port-progress-evt port)
-       always-evt
-       port))
-    (define (normal-read buf n)
+  (define (((ffmpeg-input-handler args) input) . outs)
+    (-> list? (-> string? (-> input-port?)))
+    (define sockets
+      (for/list ([_ outs]
+                 [port (range 54323 55000)])
+        (list "127.0.0.1" port)))
+    (define out-args
+      (append*
+       (for/list ([args outs]
+                  [socket sockets])
+         `("-map" "0" ,@args ,(apply format "tcp://~a:~a?listen" socket)))))
+    (define-values (stdin stdout)
+      (ffmpeg*
+       `[,@args "-i" ,input ,@out-args]))
+
+    (apply values stdout sockets)))
+
+(define (read-next-from-port port deplete)
+  (define (push-from-bytes buf sample-bytes byte-count)
+    (define bytes-ptr (u8vector->cpointer sample-bytes))
+    (define (ref i) (ptr-ref bytes-ptr _double i))
+    (define sample-count (quotient byte-count sample-size-bytes))
+    (ring-buffer-push-all! buf sample-count ref)
+    (port-commit-peeked
+     (* sample-count sample-size-bytes)
+     (port-progress-evt port)
+     always-evt
+     port))
+  (define (normal-read buf n)
+    (cond
+      [(port-closed? port) eof]
+      [else
+       (define expected-byte-count (* n sample-size-bytes))
+       (define sample-bytes (make-bytes expected-byte-count))
+       (define bytes-read (read-bytes! sample-bytes port))
+       (cond
+         [(integer? bytes-read)
+          (push-from-bytes buf sample-bytes bytes-read)
+          #t]
+         [else eof])]))
+  (define (depleting-read)
+    (define running-buffer #f)
+    (define buffer-thread #f)
+    (define (start-buffering)
+      (define sample-bytes (make-bytes (* sample-size-bytes 4096)))
+      (let loop ()
+        (define bytes-read (peek-bytes-avail! sample-bytes 0 #f port))
+        (when (integer? bytes-read)
+          (push-from-bytes running-buffer sample-bytes bytes-read)
+          (loop))))
+    (lambda (buf n)
+      (unless running-buffer
+        (set! running-buffer (make-sliding-buffer (make-ring-buffer (vector-length (ring-buffer-buf buf)) 0.0)))
+        (set! buffer-thread (thread start-buffering)))
       (cond
-        [(port-closed? port) eof]
+        [(or (port-closed? port)
+             (not (thread-running? buffer-thread)))
+         eof]
         [else
-         (define expected-byte-count (* n sample-size-bytes))
-         (define sample-bytes (make-bytes expected-byte-count))
-         (define bytes-read (peek-bytes-avail! sample-bytes 0 #f port))
-         (cond
-           [(integer? bytes-read)
-            (push-from-bytes buf sample-bytes bytes-read)
-            #t]
-           [else eof])]))
-    (define (depleting-read)
-      (define running-buffer #f)
-      (define buffer-thread #f)
-      (define (start-buffering)
-        (define sample-bytes (make-bytes (* sample-size-bytes 4096)))
-        (let loop ()
-          (define bytes-read (peek-bytes-avail! sample-bytes 0 #f port))
-          (when (integer? bytes-read)
-            (push-from-bytes running-buffer sample-bytes bytes-read)
-            (loop))))
-      (lambda (buf n)
-        (unless running-buffer
-          (set! running-buffer (make-sliding-buffer (make-ring-buffer (vector-length (ring-buffer-buf buf)) 0.0)))
-          (set! buffer-thread (thread start-buffering)))
-        (cond
-          [(or (port-closed? port)
-               (not (thread-running? buffer-thread)))
-           eof]
-          [else
-           (define sbuf (make-vector n))
-           (sliding-buffer-pop!
-            running-buffer n
-            (lambda (i s) (vector-set! sbuf i s)))
-           (ring-buffer-push-all! buf n (lambda (i) (vector-ref sbuf i)))
-           #t])))
-    (if deplete
-        (depleting-read)
-        normal-read)))
+         (define sbuf (make-vector n))
+         (sliding-buffer-pop!
+          running-buffer n
+          (lambda (i s) (vector-set! sbuf i s)))
+         (ring-buffer-push-all! buf n (lambda (i) (vector-ref sbuf i)))
+         #t])))
+  (if deplete
+      (depleting-read)
+      normal-read))
 
 #;
 (begin ;; file output TODO
@@ -259,40 +275,55 @@
   (define ((gui-output-handler [play #t]) vcfg)
     (define (gui-require s) (dynamic-require gui-path s))
     ((gui-require 'init-gui))
-    (define ffplay-in* #f)
-    (define handle* #f)
-    (when play
-      ;; cross our fingers and hope that they remain sufficiently in sync...
-      (match-define
-        (list #f ;; out
-              ffplay-in ;; in
-              _ ;; pid
-              #f ;; err
-              handle ;; handle
-              )
-        (process*/ports
-         (current-output-port) ;; out
-         #f ;; in
-         (current-error-port) ;; err
-         (find-executable-path "ffplay")
-         "-nodisp"
-         "-f"
-         (if (system-big-endian?) "f64be" "f64le")
-         "-i" "pipe:0"))
-      (write-bytes (make-bytes (* sample-size-bytes (current-latency))) ffplay-in) ;; silence it for the windup
-      (set! ffplay-in* ffplay-in)
-      (set! handle* handle))
+
+    (define pcm-args
+      `[
+        "-af" ,(format "aresample=~a" (vconfig-rate vcfg))
+        "-ac" "1"
+        "-f" "data"
+        "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")])
+    (define-values (read-next! close)
+      (cond
+        [play
+         (define-values (ffmpeg-port
+                         mpeg-socket
+                         pcm-socket)
+           ((vconfig-input vcfg)
+            `["-f" "mpegts"]
+            pcm-args))
+         ;; cross our fingers and hope that they remain sufficiently in sync...
+         (define-values (ffplay-in ffplay-out)
+           (ffmpeg*
+            #:command "ffplay"
+            `["-nodisp" "-f" "mpegts" ,(apply format "tcp://~a:~a" mpeg-socket)]))
+         (sleep 3) ;; TODO do better
+         (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
+         (file-stream-buffer-mode pcm-port 'block)
+         (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+         (define (close)
+           (close-input-port ffmpeg-port)
+           (close-input-port ffplay-out)
+
+           (close-input-port pcm-port)
+           (close-output-port tcp-out)
+           (close-output-port ffplay-in))
+         (values read-next! close)]
+        [else
+         (define-values (ffmpeg-port pcm-socket) ((vconfig-input vcfg) pcm-args))
+         (sleep 3) ;; TODO do better
+         (define-values (pcm-port tcp-out) (apply tcp-connect pcm-socket))
+         (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+         (define (close)
+           (close-input-port ffmpeg-port)
+           (close-input-port pcm-port)
+           (close-output-port tcp-out))
+         (values read-next! close)]))
+
     (define fps (fps-event (vconfig-fps vcfg)))
     (sync fps)
-    (define-values (read-next! close-next) ((vconfig-input vcfg) vcfg ffplay-in*))
     (values
      read-next!
      (gui-require 'put-frame!)
-     (lambda ()
-       (close-next)
-       (when ffplay-in*
-         (handle* 'kill)
-         (close-output-port ffplay-in*)))
+     (lambda () (close))
      fps
-     (lambda (_)
-       (void)))))
+     (lambda (_) (void)))))
