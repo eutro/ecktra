@@ -1,5 +1,7 @@
 # Ecktra
 
+![logo](logo.svg)
+
 Easily extensible, expressive audio visualization in Racket.
 
 # Usage
