@@ -36,6 +36,9 @@
 (define minidx (frequency->bucket minfreq sample-rate bufsz))
 (define maxidx (frequency->bucket maxfreq sample-rate bufsz))
 (define bucketise (bucketise-with (logarithmic-posns minidx maxidx 0 window-width) min))
+(define tilt-window
+  (for/flvector #:length (- maxidx minidx) ([i (in-range minidx maxidx)])
+    (fllog (exact->inexact i))))
 
 (bind frame : FlVector
       (~> (samples)
@@ -45,7 +48,8 @@
           (time-travel-backward halfbuf _)))
 (void (flvector-map! * frame hann-window))
 (define view : FlVector (flvector-copy (flvector-idft-mag! frame) minidx maxidx))
-(void (flvector-map! (fllerp (* 0.66 window-height) 0.0) view))
+(void (flvector-map! * view tilt-window)
+      (flvector-map! (fllerp (* 0.66 window-height) 0.0) view))
 (define points : (Listof (Pair Real Real))
   (for/list ([y (in-flvector (bucketise view))]
              [x (in-range window-width)])
