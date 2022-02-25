@@ -46,8 +46,7 @@
           (time-travel-backward halfbuf _)))
 (void (flvector-map! * frame hann-window))
 (define view : FlVector (flvector-copy (flvector-idft-mag! frame) minidx maxidx))
-(void ;(flvector-map! * view tilt-window)
-      (flvector-map! (fllerp (* 0.66 window-height) 0.0) view))
+(void (flvector-map! (fllerp (* 0.66 window-height) 0.0) view))
 (define points : (Listof (Pair Real Real))
   (for/list ([y (in-flvector (bucketise view))]
              [x (in-range window-width)])
