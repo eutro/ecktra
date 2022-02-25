@@ -31,8 +31,8 @@
 
 (define-syntax (module-begin stx)
   (define-syntax-class pre-form
-    #:literals (require #%require define define-values void)
-    (pattern ({~or require #%require define define-values void} _ ...)))
+    #:literals (require #%require define define-values void begin)
+    (pattern ({~or require #%require define define-values void begin} _ ...)))
   (define-splicing-syntax-class option
     #:attributes (opt val)
     (pattern {~seq #:latency val:expr} #:attr opt #'current-latency)

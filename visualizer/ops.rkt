@@ -143,6 +143,13 @@
 (define (flvector-idft-mag* v)
   (flvector-idft-mag! (flvector-copy v)))
 
+(: flvector-foldl (All (A) (-> (-> A Flonum A) A FlVector A)))
+(define (flvector-foldl f init flv)
+  (for/fold : A
+      ([x init])
+      ([s (in-flvector flv)])
+    (f x s)))
+
 (: flvector-map!
    (case->
     [(-> Flonum Flonum) FlVector -> FlVector]
@@ -275,9 +282,9 @@
        (+ s (expt x 2)))
      (flvector-length flv)))
 
-(: bucketise-with (-> FlVector (-> Flonum Flonum Flonum) (-> FlVector FlVector)))
-(define (bucketise-with xs merge)
-  (define len (flvector-length xs))
+(: bucketise-with (->* (FlVector (-> Flonum Flonum Flonum)) (Integer) (-> FlVector FlVector)))
+(define (bucketise-with xs merge [ln #f])
+  (define len (or ln (flvector-length xs)))
   (define bucket-fns
     : (Vectorof (U (Listof Integer)
                    (Vector Real Integer)

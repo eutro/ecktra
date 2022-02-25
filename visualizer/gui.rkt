@@ -4,11 +4,32 @@
          racket/gui
          racket/class
          racket/runtime-path
-         "gui-frame.rkt")
+         pict)
 (provide init-gui
          put-frame!)
 
 (define current-gui (box #f))
+
+(struct gui-frame
+  (draw #;(-> (Instance Frame%) (Instance Canvas%) Void))
+  #:constructor-name make-gui-frame)
+
+(define (->gui-frame o)
+  (match o
+    [(? gui-frame?) o]
+    [(? pict?)
+     (define pd (make-pict-drawer o))
+     (make-gui-frame
+      (lambda (frm #;(Instance Frame%)
+               cvs #;(Instance Canvas%))
+        (define dc (send cvs get-dc))
+        (send cvs min-height (inexact->exact (floor (pict-height o))))
+        (send cvs min-width (inexact->exact (floor (pict-width o))))
+        (pd dc 0 0)
+        (void)))]
+    [_
+     (define str (format "~a" o))
+     (->gui-frame (text str))]))
 
 (define (make-gui)
   (define in-chan (make-channel))
