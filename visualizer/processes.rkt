@@ -66,8 +66,8 @@
   (time-travel-forward (- by) signal))
 
 (: signal-fold (All (A B) (->* [(Signal A) (-> B A B) B] [Positive-Integer] (Signal B))))
-(define (signal-fold signal proc acc [backbuf 1])
-  (define buf (make-ring-buffer backbuf acc))
+(define (signal-fold signal proc dflt [backbuf 1])
+  (define buf (make-ring-buffer backbuf dflt))
   (define buftime 0)
   (define old-prod (signal-produce signal))
   (: new-prod (-> Time B))
@@ -76,15 +76,15 @@
       [(<= t buftime)
        (define idx (+ backbuf (- t buftime 1)))
        (when (negative? idx)
-         (raise-arguments-error 'signal-fold
-                                "sample out of range"
-                                "t" t))
+         (raise (exn:fail:signal:out-of-range "signal-fold: sample out of range" (current-continuation-marks))))
        (ring-buffer-nth buf idx)]
       [else
        (let loop ()
          (set! buftime (add1 buftime))
          (define acc (ring-buffer-nth buf (sub1 backbuf)))
-         (define next-val (proc acc (old-prod buftime)))
+         (define next-val
+           (with-handlers ([exn:fail:signal:out-of-range? (lambda (_) dflt)])
+             (proc acc (old-prod buftime))))
          (ring-buffer-push! buf next-val)
          (if (>= buftime t)
              next-val

@@ -2,26 +2,38 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   xmlns:dc="http://purl.org/dc/elements/1.1/"
-   xmlns:cc="http://creativecommons.org/ns#"
-   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-   xmlns:svg="http://www.w3.org/2000/svg"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:xlink="http://www.w3.org/1999/xlink"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    width="2.6458333mm"
    height="2.6458333mm"
    viewBox="0 0 2.6458332 2.6458332"
    version="1.1"
    id="svg8"
    sodipodi:docname="star.svg"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)">
+   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
   <defs
      id="defs2">
     <linearGradient
        inkscape:collect="always"
-       id="linearGradient844">
+       id="linearGradient988">
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0.2711193"
+         offset="0"
+         id="stop984" />
+      <stop
+         style="stop-color:#ffffff;stop-opacity:0"
+         offset="1"
+         id="stop986" />
+    </linearGradient>
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient844-3">
       <stop
          style="stop-color:#ffffff;stop-opacity:1"
          offset="0"
@@ -33,7 +45,7 @@
     </linearGradient>
     <radialGradient
        inkscape:collect="always"
-       xlink:href="#linearGradient844"
+       xlink:href="#linearGradient844-3"
        id="radialGradient846"
        cx="21.515198"
        cy="21.044212"
@@ -42,17 +54,27 @@
        r="17.035156"
        gradientUnits="userSpaceOnUse"
        gradientTransform="matrix(0.07765803,0,0,0.07765803,4.1321305,35.122199)" />
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient988"
+       id="radialGradient947"
+       cx="5.8029585"
+       cy="36.756451"
+       fx="5.8029585"
+       fy="36.756451"
+       r="1.3229166"
+       gradientUnits="userSpaceOnUse" />
   </defs>
   <sodipodi:namedview
      id="base"
-     pagecolor="#ffffff"
+     pagecolor="#000000"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="0.0"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:zoom="1.979899"
-     inkscape:cx="80.71633"
-     inkscape:cy="60.818176"
+     inkscape:zoom="31.678384"
+     inkscape:cx="-3.3619139"
+     inkscape:cy="8.0496531"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -61,11 +83,12 @@
      fit-margin-left="0"
      fit-margin-right="0"
      fit-margin-bottom="0"
-     inkscape:window-width="1366"
-     inkscape:window-height="701"
+     inkscape:window-width="1920"
+     inkscape:window-height="997"
      inkscape:window-x="0"
      inkscape:window-y="0"
-     inkscape:window-maximized="1" />
+     inkscape:window-maximized="1"
+     inkscape:lockguides="true" />
   <metadata
      id="metadata5">
     <rdf:RDF>
@@ -74,7 +97,6 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -83,6 +105,12 @@
      inkscape:groupmode="layer"
      id="layer1"
      transform="translate(-4.4800418,-35.433534)">
+    <circle
+       style="fill:url(#radialGradient947);stroke-width:0.264999;stop-color:#000000;fill-opacity:1.0"
+       id="path859"
+       cx="5.8029585"
+       cy="36.756451"
+       r="1.3229166" />
     <path
        sodipodi:type="star"
        style="fill:url(#radialGradient846);fill-opacity:1;stroke:none;stroke-width:0.02572487;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:5;stroke-dasharray:none;stroke-opacity:1"

@@ -38,9 +38,7 @@
   (define (get-sample t)
     (define i (- t t0))
     (unless (and (<= 0 i) (< i bufsz))
-      (raise-arguments-error 'get-sample
-                              "sample out of range"
-                              "t" t))
+      (raise (exn:fail:signal:out-of-range "get-sample: sample out of range" (current-continuation-marks))))
     (ring-buffer-nth buf i))
   (define samples (make-signal get-sample pure-signal-meta))
 

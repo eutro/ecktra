@@ -248,6 +248,10 @@
     [(min-in max-in min-out max-out)
      (λ (x) (remap x min-in max-in min-out max-out))]))
 
+(: clamp (-> Real Real Real Real))
+(define (clamp x minv maxv)
+  (max minv (min x maxv)))
+
 (: make-hann-window (-> Integer FlVector))
 (define (make-hann-window N)
   (for/flvector #:length N ([i (in-range N)])
@@ -276,11 +280,12 @@
 (define (bucket->frequency b sample-rate bufsz)
   (/ (* b sample-rate) bufsz))
 
-(: flvector-rms (-> FlVector Flonum))
+(: flvector-rms (-> FlVector Positive-Flonum))
 (define (flvector-rms flv)
-  (/ (for/fold : Flonum ([s 0.0]) ([x (in-flvector flv)])
-       (+ s (expt x 2)))
-     (flvector-length flv)))
+  (unsafe-cast ;; safety: rms is always positive
+   (/ (for/fold : Flonum ([s 0.0]) ([x (in-flvector flv)])
+        (+ s (* x x)))
+      (flvector-length flv))))
 
 (: bucketise-with (->* (FlVector (-> Flonum Flonum Flonum)) (Integer) (-> FlVector FlVector)))
 (define (bucketise-with xs merge [ln #f])

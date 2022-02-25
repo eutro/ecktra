@@ -26,6 +26,8 @@
   #:type-name Signal
   #:constructor-name make-signal)
 
+(struct exn:fail:signal:out-of-range exn:fail ())
+
 (: swap-produce (All (A B) (-> (-> Time B) (Signal A) (Signal B))))
 (define (swap-produce f signal)
   (make-signal
