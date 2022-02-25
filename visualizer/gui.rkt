@@ -3,6 +3,7 @@
 (require racket/draw
          racket/gui
          racket/class
+         racket/runtime-path
          "gui-frame.rkt")
 (provide init-gui
          put-frame!)

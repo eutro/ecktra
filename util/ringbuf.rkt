@@ -2,6 +2,7 @@
 
 (require math)
 (provide (struct-out ring-buffer)
+         (struct-out sliding-buffer)
          ring-buffer-push!
          ring-buffer-push-all!
          ring-buffer-nth
@@ -9,7 +10,9 @@
          sliding-buffer-pop!
          make-ring-buffer
          make-sliding-buffer
-         RingBuffer)
+         sliding-buffer-remaining
+         RingBuffer
+         SlidingBuffer)
 
 (struct (T) ring-buffer
   ([buf : (Mutable-Vectorof T)]
@@ -91,6 +94,12 @@
    (ring-buffer-buf ringbuf)
    (ring-buffer-offset ringbuf)
    0))
+
+(: sliding-buffer-remaining (All (T) (-> (SlidingBuffer T) Integer)))
+(define (sliding-buffer-remaining slbuf)
+  (modulo (- (ring-buffer-offset slbuf)
+             (sliding-buffer-read-offset slbuf))
+          (vector-length (ring-buffer-buf slbuf))))
 
 (module+ test
   (require typed/rackunit)

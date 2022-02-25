@@ -21,6 +21,7 @@
    fps ;; integer?
    input ;;
    deplete ;; boolean?
+   delayc ;; number?
    ))
 
 (define (parse-cl)
@@ -28,6 +29,7 @@
   (define fps* 30)
   (define input* #f)
   (define deplete* #f)
+  (define delay* 0)
   (define input-handler (ffmpeg-input-handler null))
   (define output-handler (gui-output-handler))
 
@@ -46,6 +48,9 @@
        #:once-each
        [("-r" "--rate") rate "Set the sample rate" (set! rate* (string->number rate))]
        [("--fps" "--max-fps") fps "Set the maximum visualizer framerate" (set! fps* (string->number fps))]
+       [("--delay")
+        seconds "How long to wait before syncing with framerate, on top of any existing latency"
+        (set! delay* (string->number seconds))]
        #:args rest-args
        (recur rest-args)))
     (list "Configure the audio visualizer" "option")]
@@ -57,10 +62,10 @@
        #:argv (cons first-arg args)
        #:once-each
        [("--deplete" "--sync")
-        "Deplete extra samples from the input when necessary to keep up with it. Useful for live input."
+        "Deplete extra samples from the input when necessary to keep up with it."
         (set! deplete* #t)]
        #:once-any
-       [("-f" "--ffmpeg")
+       [("-F" "--ffmpeg")
         =>
         (lambda (_flag . args)
           (define-values (ffmpeg-args rest-args)
@@ -112,7 +117,7 @@
 
   (current-sample-rate rate*)
   (current-subprocess-custodian-mode 'kill) ;; just let them die
-  (output-handler (vconfig rate* fps* (input-handler input*) deplete*)))
+  (output-handler (vconfig rate* fps* (input-handler input*) deplete* delay*)))
 
 (define sample-size-bytes 8)
 
@@ -176,17 +181,19 @@
 
     stdout))
 
-(define (read-next-from-port port deplete)
-  (define (push-from-bytes buf sample-bytes byte-count)
+(define (read-next-from-port port vcfg)
+  (define deplete (vconfig-deplete vcfg))
+  (define (push-from-bytes buf sample-bytes byte-count peeked?)
     (define bytes-ptr (u8vector->cpointer sample-bytes))
     (define (ref i) (ptr-ref bytes-ptr _double i))
     (define sample-count (quotient byte-count sample-size-bytes))
     (ring-buffer-push-all! buf sample-count ref)
-    (port-commit-peeked
-     (* sample-count sample-size-bytes)
-     (port-progress-evt port)
-     always-evt
-     port))
+    (when peeked?
+      (port-commit-peeked
+       (* sample-count sample-size-bytes)
+       (port-progress-evt port)
+       always-evt
+       port)))
   (define (normal-read buf n)
     (cond
       [(port-closed? port) eof]
@@ -196,34 +203,33 @@
        (define bytes-read (read-bytes! sample-bytes port))
        (cond
          [(integer? bytes-read)
-          (push-from-bytes buf sample-bytes bytes-read)
+          (push-from-bytes buf sample-bytes bytes-read #f)
           #t]
          [else eof])]))
   (define (depleting-read)
-    (define running-buffer #f)
-    (define buffer-thread #f)
-    (define (start-buffering)
-      (define sample-bytes (make-bytes (* sample-size-bytes 4096)))
-      (let loop ()
-        (define bytes-read (peek-bytes-avail! sample-bytes 0 #f port))
-        (when (integer? bytes-read)
-          (push-from-bytes running-buffer sample-bytes bytes-read)
-          (loop))))
+    (define missed-bytes 0)
+    (define _peeker-thread
+      (thread
+       (lambda ()
+         (define peek-buf (make-bytes (* sample-size-bytes 4096)))
+         (let loop ()
+           (unless (port-closed? port)
+             (peek-bytes! peek-buf 0 port)
+             (sync (port-progress-evt port))
+             (loop))))))
     (lambda (buf n)
-      (unless running-buffer
-        (set! running-buffer (make-sliding-buffer (make-ring-buffer (vector-length (ring-buffer-buf buf)) 0.0)))
-        (set! buffer-thread (thread start-buffering)))
       (cond
-        [(or (port-closed? port)
-             (not (thread-running? buffer-thread)))
-         eof]
+        [(port-closed? port) eof]
         [else
-         (define sbuf (make-vector n))
-         (sliding-buffer-pop!
-          running-buffer n
-          (lambda (i s) (vector-set! sbuf i s)))
-         (ring-buffer-push-all! buf n (lambda (i) (vector-ref sbuf i)))
-         #t])))
+         (define expected-byte-count (+ (* n sample-size-bytes) missed-bytes))
+         (define sample-bytes (make-bytes expected-byte-count))
+         (define bytes-read (peek-bytes-avail! sample-bytes 0 #f port))
+         (cond
+           [(integer? bytes-read)
+            (push-from-bytes buf sample-bytes bytes-read #t)
+            (set! missed-bytes (- expected-byte-count bytes-read))
+            #t]
+           [else eof])])))
   (if deplete
       (depleting-read)
       normal-read))
@@ -235,7 +241,7 @@
     "-ac" "1"
     "-f" "data"
     "-c" ,(if (system-big-endian?) "pcm_f64be" "pcm_f64le")
-    ,(apply format "tcp://~a:~a" (listener->addr+port listener))])
+    ,(apply format "tcp://~a:~a?" (listener->addr+port listener))])
 
 (define (get-pcm-ports ffmpeg-port listener)
   (define ffmpeg-port-closed (port-closed-evt ffmpeg-port))
@@ -276,7 +282,7 @@
 
          (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
 
-         (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+         (define read-next! (read-next-from-port pcm-port vcfg))
          (define (close)
            (close-input-port ffmpeg-port)
            (close-input-port ffplay-out)
@@ -288,13 +294,14 @@
         [else
          (define ffmpeg-port ((vconfig-input vcfg) (pcm-args vcfg pcm-listener)))
          (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
-         (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+         (define read-next! (read-next-from-port pcm-port vcfg))
          (define (close)
            (close-input-port ffmpeg-port)
            (close-input-port pcm-port)
            (close-output-port tcp-out))
          (values read-next! close)]))
 
+    (sleep (vconfig-delayc vcfg))
     (define fps (fps-event (vconfig-fps vcfg)))
     (sync fps)
     (values
@@ -362,7 +369,7 @@
            (close-output-port stdin*)
            (subprocess-wait proc*)))))
     (define-values (pcm-port tcp-out) (get-pcm-ports ffmpeg-port pcm-listener))
-    (define read-next! (read-next-from-port pcm-port (vconfig-deplete vcfg)))
+    (define read-next! (read-next-from-port pcm-port vcfg))
     (values
      read-next!
      (lambda (frame)

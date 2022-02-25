@@ -21,7 +21,8 @@
   (for/vector : (Vectorof Complex)
       #:length (- maxidx minidx)
       ([i (in-range minidx maxidx)])
-      (make-polar 1 (remap (unsafe-cast (log i)) log-minidx log-maxidx 0 (* 2 pi)))))
+      (make-polar 1 (remap i minidx maxidx 0 (* -2 pi)))))
+(define bucketise (bucketise-with (logarithmic-posns minidx maxidx 0 (- maxidx minidx)) min))
 
 #:backbuf halfbuf
 #:latency halfbuf
@@ -33,6 +34,7 @@
 (define scale (- 0.8 (/ (log (flvector-rms frame)))))
 (define view : FlVector (flvector-copy (flvector-idft-mag! frame) minidx maxidx))
 (void (flvector-map! * view tilt-window)
+      (set! view (bucketise view))
       (flvector-set! view (- maxidx minidx 1) (flvector-ref view 0)) ;; ensure continuity
       (flvector-map! (fllerp 100.0 (* 0.5 window-size)) view))
 (define points : (Listof (Pair Real Real))

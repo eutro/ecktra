@@ -1,7 +1,7 @@
 #lang typed/racket/base
 
 (require typed/racket/unsafe
-         racket/math
+         racket/sequence
          math/base
          math/flonum
          racket/flonum
@@ -274,3 +274,63 @@
   (/ (for/fold : Flonum ([s 0.0]) ([x (in-flvector flv)])
        (+ s (expt x 2)))
      (flvector-length flv)))
+
+(: bucketise-with (-> FlVector (-> Flonum Flonum Flonum) (-> FlVector FlVector)))
+(define (bucketise-with xs merge)
+  (define len (flvector-length xs))
+  (define bucket-fns
+    : (Vectorof (U (Listof Integer)
+                   (Vector Real Integer)
+                   Integer
+                   False))
+    (make-vector len #f))
+  (for ([x (in-flvector xs)]
+        [lx (sequence-append (list 0) (in-flvector xs))]
+        [i (in-range len)])
+    (define ix (floor (inexact->exact (floor x))))
+    (define ilx (floor (inexact->exact (floor lx))))
+    (let ()
+      (define old-bucket (vector-ref bucket-fns ix))
+      (unless (or (vector? old-bucket) (integer? old-bucket))
+        (vector-set! bucket-fns ix (cons i (or old-bucket null)))))
+    (for ([ii (in-range ilx ix)])
+      (unless (vector-ref bucket-fns ii)
+        (vector-set! bucket-fns ii (vector (unlerp ii ilx ix) i)))))
+  (for ([i (in-range len)])
+    (define old-bucket (vector-ref bucket-fns i))
+    (when (and (list? old-bucket) (null? (cdr old-bucket)))
+      (vector-set! bucket-fns i (car old-bucket))))
+  (define (bucketise [flv : FlVector])
+    (for/flvector #:length len
+        ([f bucket-fns])
+      (cond
+        [(vector? f)
+         (define i (vector-ref f 1))
+         (cast
+          (lerp (vector-ref f 0)
+                (flvector-ref flv (sub1 i))
+                (flvector-ref flv i))
+          Flonum)]
+        [(integer? f) (flvector-ref flv f)]
+        [(list? f)
+         (for/fold : Flonum
+             ([x (flvector-ref flv (car f))])
+             ([i (in-list (cdr f))])
+           (merge x (flvector-ref flv i)))]
+        [else 0.0])))
+  bucketise)
+
+(: logarithmic-posns (-> Nonnegative-Integer Nonnegative-Integer
+                         Real Real
+                         FlVector))
+(define (logarithmic-posns minidx maxidx minout maxout)
+  (define log-minidx (real->double-flonum (log minidx)))
+  (define log-maxidx (real->double-flonum (log maxidx)))
+  (for/flvector
+      #:length (- maxidx minidx)
+      ([i (in-range minidx maxidx)])
+      (flremap (unsafe-cast (log i))
+               log-minidx
+               log-maxidx
+               (real->double-flonum minout)
+               (real->double-flonum maxout))))
