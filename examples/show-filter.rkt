@@ -41,7 +41,6 @@
       (~> (samples)
           (biquad-filter _ type freq q gain)
           (signal-buffer 0.0 bufsz)
-          (liftA * _ (pure 128.0))
           (sliding-window-flvector bufsz _)
           (time-travel-backward halfbuf _)))
 (void (flvector-map! * frame hann-window))
