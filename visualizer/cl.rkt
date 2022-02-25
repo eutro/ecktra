@@ -112,8 +112,9 @@
        #:args rest-args
        (recur rest-args)))
     (list "Configure video output" "option")]
-   #:args (input)
-   (set! input* input))
+   #:args (input . program-args)
+   (begin (set! input* input)
+          (current-command-line-arguments (list->vector program-args))))
 
   (current-sample-rate rate*)
   (current-subprocess-custodian-mode 'kill) ;; just let them die

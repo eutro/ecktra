@@ -47,7 +47,7 @@
   (parameterize ([current-start samples])
     (define out (f))
     (define produce (signal-produce out))
-    
+
     (read-samples! latency)
     (define flush-handle (plumber-add-flush! (current-plumber) (lambda (_) (finish))))
     (consume-thread
