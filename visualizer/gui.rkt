@@ -4,6 +4,7 @@
          racket/gui
          racket/class
          racket/runtime-path
+         rsvg
          pict)
 (provide init-gui
          put-frame!)
@@ -31,6 +32,8 @@
      (define str (format "~a" o))
      (->gui-frame (text str))]))
 
+(define-runtime-path icon-path "../logo.svg")
+
 (define (make-gui)
   (define in-chan (make-channel))
   (define out-chan (make-channel))
@@ -51,6 +54,7 @@
      (define window-frame
        (new frame%
             [label "Ecktra"]))
+     (send window-frame set-icon (load-svg-from-file icon-path))
      (define window-cvs
        (new canvas%
             [parent window-frame]
