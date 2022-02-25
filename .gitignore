@@ -5,4 +5,4 @@
 compiled/
 /doc/
 **/build/
-out/*.mp4
+out/

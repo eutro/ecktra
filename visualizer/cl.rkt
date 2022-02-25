@@ -37,6 +37,7 @@
     (let/cc cc (cons cc (current-command-line-arguments))))
   (define (recur args) (cc (cons cc args)))
   (command-line
+   #:program "ecktra"
    #:argv argv
    #:once-each
    [("-c" "--config")
