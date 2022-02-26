@@ -87,7 +87,7 @@ To be more general, an audio visualizer takes the following form:
      that Ecktra can even begin decoding with.
    - `#:backbuf` (default 0): how many samples are stored after their time has passed.
 4. A sequence of statements defining what should be done to the signal.
-   These are wrapped in a [`seq` block](#Signals_and_Seq_Blocks),
+   These are wrapped in a [`seq` block](#signals-and-seq-blocks),
    and must return a `(Signal T)`, with the constraints on `T` being output-dependent.
    Notably, `(Signal pict)` is always good.
    - When rendering to a GUI, if `T` is `pict-convertible?`, it will be
