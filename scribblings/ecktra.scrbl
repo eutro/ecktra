@@ -4,4 +4,4 @@
 @title{ecktra}
 @author{eutro}
 
-Ecktra is cool.
+There should be docs here but I don't have the time to write them :c.

@@ -47,7 +47,7 @@
        #:program flag
        #:argv (cons first-arg args)
        #:once-each
-       [("-r" "--rate") rate "Set the sample rate" (set! rate* (string->number rate))]
+       ;; doesn't do anything [("-r" "--rate") rate "Set the sample rate" (set! rate* (string->number rate))]
        [("--fps" "--max-fps") fps "Set the maximum visualizer framerate" (set! fps* (string->number fps))]
        [("--delay")
         seconds "How long to wait before syncing with framerate, on top of any existing latency"

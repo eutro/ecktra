@@ -5,7 +5,8 @@
          racket/class
          racket/runtime-path
          rsvg
-         pict)
+         pict
+         pict/convert)
 (provide init-gui
          put-frame!)
 
@@ -18,7 +19,7 @@
 (define (->gui-frame o)
   (match o
     [(? gui-frame?) o]
-    [(? pict?)
+    [(? pict-convertible?)
      (define pd (make-pict-drawer o))
      (make-gui-frame
       (lambda (frm #;(Instance Frame%)
