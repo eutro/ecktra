@@ -6,6 +6,8 @@ Easily extensible[^fn], expressive[^fn] audio visualization in Racket.
 
 [^fn]: Your experience may vary.
 
+![pulsating Racket logo](example-out/rkt-cut.gif)
+
 # Usage
 
 Ecktra is currently in development (and may remain so indefinitely),
