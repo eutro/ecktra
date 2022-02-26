@@ -75,4 +75,4 @@
        (- (cdr pos) (/ (pict-height scaled) 2))
        scaled))))
 
-(pure image)
+(pure (freeze image))

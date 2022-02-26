@@ -7,7 +7,7 @@
 (define bufsz (expt 2 16))
 (define halfbuf (floor (/ bufsz 2)))
 (define minfreq 30)
-(define maxfreq 1000)
+(define maxfreq 4000)
 (define minidx (frequency->bucket minfreq sample-rate bufsz))
 (define maxidx (frequency->bucket maxfreq sample-rate bufsz))
 (define log-minidx (log minidx))
@@ -43,6 +43,7 @@
     (define mv (* offset-angle scale y v))
     (cons (+ (/ window-size 2) (real-part mv))
           (- (/ window-size 2) (imag-part mv)))))
-(pure (vl-append
-       (text (format "FPS: ~a" (real->decimal-string (current-fps) 2)))
-       (plot-2d-points window-size window-size points)))
+(pure (plot-2d-points window-size window-size points)
+      #;
+      (vl-append
+       (text (format "FPS: ~a" (real->decimal-string (current-fps) 2)))))
